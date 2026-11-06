@@ -35,7 +35,7 @@ async function startServer() {
     const baseUrl =
       process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     res.type('text/plain').send(
-      `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${baseUrl}/sitemap.xml\n`
+      `User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml\n`
     );
   });
 
