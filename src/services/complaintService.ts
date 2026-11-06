@@ -75,13 +75,15 @@ export async function saveSubsidyComplaint(
 export async function updateComplaintStatus(
   complaintId: number,
   payload: UpdateComplaintStatusPayload,
-  officerRole: string
+  officerRole: string,
+  officerToken?: string
 ): Promise<ComplaintItem> {
   const response = await fetch(`/api/complaints/${complaintId}/status`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       'x-officer-role': officerRole,
+      ...(officerToken ? { 'x-officer-token': officerToken } : {}),
     },
     body: JSON.stringify(payload),
   });

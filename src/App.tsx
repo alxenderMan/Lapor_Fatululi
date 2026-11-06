@@ -50,6 +50,9 @@ import {
 
 interface ActiveOfficerSession {
   id: string;
+  username: string;
+  password: string;
+  securityToken: string;
   name: string;
   jabatan: string;
   role: 'lurah' | 'kasi_trantib' | 'staf_admin' | 'ketua_rt';
@@ -60,23 +63,38 @@ interface ActiveOfficerSession {
 type ScreenView = 'portal_warga' | 'login_aparat' | 'admin_panel';
 type CitizenTab = 'buat_laporan' | 'lacak_status' | 'aduan_subsidi';
 
+const AUTHORIZED_GOOGLE_EMAILS = new Set([
+  'alxendergeghi@gmail.com',
+  'lurah@fatululi.kupangkota.go.id',
+  'admin@fatululi.kupangkota.go.id',
+]);
+
 const PRESET_OFFICER_ACCOUNTS: ActiveOfficerSession[] = [
   {
-    id: 'kasi-trantib',
-    name: 'Melkianus Bria, S.Sos',
-    jabatan: 'Kasi Trantib Fatululi',
-    role: 'kasi_trantib',
-    nipOrCode: '198204122009031004',
-  },
-  {
     id: 'lurah-fatululi',
+    username: 'lurah',
+    password: 'Fatululi#Lurah2026',
+    securityToken: 'FTL-SEC-LURAH-2026',
     name: 'Yuliana Manafe, S.IP',
     jabatan: 'Lurah Fatululi',
     role: 'lurah',
     nipOrCode: '197808192005012008',
   },
   {
+    id: 'kasi-trantib',
+    username: 'trantib',
+    password: 'Fatululi#Trantib2026',
+    securityToken: 'FTL-SEC-TRANTIB-2026',
+    name: 'Melkianus Bria, S.Sos',
+    jabatan: 'Kasi Trantib Fatululi',
+    role: 'kasi_trantib',
+    nipOrCode: '198204122009031004',
+  },
+  {
     id: 'admin-kelurahan',
+    username: 'admin',
+    password: 'Fatululi#Admin2026',
+    securityToken: 'FTL-SEC-ADMIN-2026',
     name: 'Hendrikus Lulan, A.Md',
     jabatan: 'Admin & Arsip Kelurahan',
     role: 'staf_admin',
@@ -84,6 +102,9 @@ const PRESET_OFFICER_ACCOUNTS: ActiveOfficerSession[] = [
   },
   {
     id: 'ketua-rt-012',
+    username: 'rt012',
+    password: 'Fatululi#RT2026',
+    securityToken: 'FTL-SEC-RT012-2026',
     name: 'Bpk. Petrus Tari (Ketua RT 012)',
     jabatan: 'Ketua RT 012 / RW 004',
     role: 'ketua_rt',
@@ -168,14 +189,9 @@ export default function App() {
   const [officerSession, setOfficerSession] = useState<ActiveOfficerSession | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
 
-  // Login Form State
-  const [selectedPresetAccount, setSelectedPresetAccount] = useState<string>(
-    PRESET_OFFICER_ACCOUNTS[0].id
-  );
-  const [loginNipInput, setLoginNipInput] = useState<string>(
-    PRESET_OFFICER_ACCOUNTS[0].nipOrCode
-  );
-  const [loginPinInput, setLoginPinInput] = useState<string>('123456');
+  // Login Form State (Starts empty so public visitors cannot bypass authentication)
+  const [loginNipInput, setLoginNipInput] = useState<string>('');
+  const [loginPinInput, setLoginPinInput] = useState<string>('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // PostgreSQL Complaints State
@@ -277,11 +293,29 @@ export default function App() {
   }, [loadComplaints]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setFirebaseUser(user);
+    const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        const emailLower = (user.email || '').toLowerCase();
+        const isWhitelisted =
+          AUTHORIZED_GOOGLE_EMAILS.has(emailLower) ||
+          emailLower.endsWith('@fatululi.kupangkota.go.id');
+
+        if (!isWhitelisted) {
+          await signOut(auth);
+          setFirebaseUser(null);
+          setOfficerSession(null);
+          setLoginError(
+            `Akses Ditolak: Email Google (${user.email}) tidak terdaftar sebagai Aparat Kelurahan Fatululi.`
+          );
+          return;
+        }
+
+        setFirebaseUser(user);
         const googleOfficer: ActiveOfficerSession = {
           id: user.uid,
+          username: emailLower,
+          password: '',
+          securityToken: 'FTL-SEC-GOOGLE-ADMIN',
           name: user.displayName || 'Pegawai Kelurahan Fatululi',
           jabatan: 'Lurah / Kasi Trantib Fatululi',
           role: 'lurah',
@@ -289,6 +323,8 @@ export default function App() {
         };
         setOfficerSession(googleOfficer);
         setActiveScreen('admin_panel');
+      } else {
+        setFirebaseUser(null);
       }
     });
     return () => unsub();
@@ -299,28 +335,42 @@ export default function App() {
     setTimeout(() => setToastBanner(null), 4000);
   };
 
-  // Officer Login Handler
+  // Officer Login Handler (Strict Username/NIP & Password Check)
   const handleOfficerLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
-    if (!loginNipInput.trim() || !loginPinInput.trim()) {
-      setLoginError('Mohon masukkan NIP / Kode Aparat dan Kata Sandi.');
+    const inputUser = loginNipInput.trim();
+    const inputPass = loginPinInput.trim();
+
+    if (!inputUser || !inputPass) {
+      setLoginError('Mohon masukkan Username / NIP Aparat dan Kata Sandi.');
       return;
     }
 
-    const matchedPreset =
-      PRESET_OFFICER_ACCOUNTS.find((acc) => acc.id === selectedPresetAccount) ||
-      PRESET_OFFICER_ACCOUNTS[0];
+    const matchedAccount = PRESET_OFFICER_ACCOUNTS.find(
+      (acc) =>
+        (acc.username.toLowerCase() === inputUser.toLowerCase() ||
+          acc.nipOrCode.toLowerCase() === inputUser.toLowerCase()) &&
+        acc.password === inputPass
+    );
 
-    setOfficerSession(matchedPreset);
-    if (matchedPreset.rtScope) {
-      setAdminRtFilter(matchedPreset.rtScope);
+    if (!matchedAccount) {
+      setLoginError(
+        'Akses Ditolak: Username/NIP atau Kata Sandi Aparat tidak sesuai. Pastikan menggunakan akun resmi Kelurahan Fatululi.'
+      );
+      return;
+    }
+
+    setOfficerSession(matchedAccount);
+    setLoginPinInput('');
+    if (matchedAccount.rtScope) {
+      setAdminRtFilter(matchedAccount.rtScope);
     } else {
       setAdminRtFilter('semua');
     }
     setActiveScreen('admin_panel');
-    showToast(`Selamat datang, ${matchedPreset.name} (${matchedPreset.jabatan}).`);
+    showToast(`Selamat datang, ${matchedAccount.name} (${matchedAccount.jabatan}).`);
   };
 
   const handleGoogleOfficerLogin = async () => {
@@ -542,7 +592,8 @@ export default function App() {
           actorName: officerSession.name,
           actorRole: officerSession.jabatan,
         },
-        officerSession.role
+        officerSession.role,
+        officerSession.securityToken
       );
       setEditingItem(null);
       await loadComplaints();
@@ -1731,67 +1782,37 @@ export default function App() {
             )}
 
             <form onSubmit={handleOfficerLoginSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-extrabold text-slate-800 mb-2">
-                  Pilih Jabatan / Akun Resmi Kelurahan Fatululi
-                </label>
-                <div className="grid grid-cols-1 gap-2">
-                  {PRESET_OFFICER_ACCOUNTS.map((acc) => {
-                    const isSelected = selectedPresetAccount === acc.id;
-                    return (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedPresetAccount(acc.id);
-                          setLoginNipInput(acc.nipOrCode);
-                        }}
-                        className={`text-left p-3 rounded-2xl border text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-[#0F172A] text-white border-[#0F172A]'
-                            : 'bg-[#F8FAFC] text-slate-800 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-extrabold">{acc.jabatan}</div>
-                          <div
-                            className={`text-[11px] mt-0.5 ${
-                              isSelected ? 'text-slate-300' : 'text-slate-500'
-                            }`}
-                          >
-                            {acc.name} • {acc.nipOrCode}
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <span className="text-[11px] font-bold text-[#F59E0B]">Dipilih</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                Halaman ini khusus untuk <strong>Lurah, Kasi Trantib, Staf Administrasi, dan Ketua RT/RW Kelurahan Fatululi</strong>. Warga umum tidak memerlukan login untuk membuat atau melacak pengaduan.
               </div>
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
-                  NIP / Kode Akun Dinas
+                  Username / NIP Akun Dinas *
                 </label>
                 <input
                   type="text"
                   value={loginNipInput}
                   onChange={(e) => setLoginNipInput(e.target.value)}
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900"
+                  placeholder="Masukkan Username atau 18 digit NIP..."
+                  autoComplete="username"
+                  required
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
-                  PIN / Kata Sandi Aparat
+                  Kata Sandi / Password Aparat *
                 </label>
                 <input
                   type="password"
                   value={loginPinInput}
                   onChange={(e) => setLoginPinInput(e.target.value)}
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-900"
+                  placeholder="Masukkan kata sandi akun dinas..."
+                  autoComplete="current-password"
+                  required
+                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
                 />
               </div>
 

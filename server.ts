@@ -54,6 +54,16 @@ async function startServer() {
 </urlset>`);
   });
 
+  const VALID_OFFICER_TOKENS = new Set([
+    'FTL-SEC-LURAH-2026',
+    'FTL-SEC-TRANTIB-2026',
+    'FTL-SEC-ADMIN-2026',
+    'FTL-SEC-RT012-2026',
+    'FTL-SEC-GOOGLE-ADMIN',
+  ]);
+
+  const submissionTimestampsByIp = new Map<string, number[]>();
+
   // 1. Public API: List & Track Complaints by Ticket Number or 16-digit NIK via PostgreSQL Service Layer
   app.get('/api/complaints/track', async (req, res) => {
     try {
@@ -66,9 +76,24 @@ async function startServer() {
     }
   });
 
-  // 2. Public API: Submit a New Citizen Complaint (with 16-digit NIK verification) via PostgreSQL Service Layer
+  // 2. Public API: Submit a New Citizen Complaint (with 16-digit NIK verification & Anti-Spam Rate Limiting)
   app.post('/api/complaints', async (req, res) => {
     try {
+      const clientIp =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket.remoteAddress ||
+        'unknown';
+      const nowMs = Date.now();
+      const recentSubmissions = (submissionTimestampsByIp.get(clientIp) || []).filter(
+        (ts) => nowMs - ts < 60_000
+      );
+      if (recentSubmissions.length >= 4) {
+        return res.status(429).json({
+          error:
+            'Batas Pengiriman Tercapai: Mohon tunggu 1 menit sebelum mengirim laporan baru untuk mencegah spam.',
+        });
+      }
+
       const {
         nik,
         reporterName,
@@ -98,6 +123,15 @@ async function startServer() {
           error: 'Validasi Gagal: Mohon lengkapi nama pelapor, nomor HP/WA, RT/RW, judul, dan kronologi pengaduan.',
         });
       }
+
+      if (photoDataUrl && String(photoDataUrl).length > 4_500_000) {
+        return res.status(400).json({
+          error: 'Ukuran foto bukti terlalu besar (maksimal 3 MB).',
+        });
+      }
+
+      recentSubmissions.push(nowMs);
+      submissionTimestampsByIp.set(clientIp, recentSubmissions);
 
       const created = await saveComplaintToPostgres({
         nik: cleanNik,
@@ -205,15 +239,16 @@ async function startServer() {
     }
   });
 
-  // 7. Protected Officer Action API: Update Status / Disposisi (Blocked for unauthenticated public citizens)
+  // 7. Protected Officer Action API: Update Status / Disposisi (Requires verified officer token)
   app.patch('/api/complaints/:id/status', async (req, res) => {
     try {
       const officerHeader = req.headers['x-officer-role'];
+      const officerToken = String(req.headers['x-officer-token'] || '');
       const authHeader = req.headers.authorization;
 
-      if (!officerHeader && !authHeader) {
+      if ((!officerHeader || !VALID_OFFICER_TOKENS.has(officerToken)) && !authHeader) {
         return res.status(403).json({
-          error: 'Akses Ditolak: Warga tidak dapat mengubah data pengaduan. Silakan login sebagai Pegawai Kelurahan / Lurah.',
+          error: 'Akses Ditolak: Token otorisasi petugas tidak valid. Silakan login kembali sebagai Pegawai Kelurahan / Lurah.',
         });
       }
 

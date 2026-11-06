@@ -159,6 +159,12 @@ export default async function handler(req, res) {
         });
       }
 
+      if (photoDataUrl && String(photoDataUrl).length > 4500000) {
+        return res.status(400).json({
+          error: 'Ukuran foto bukti terlalu besar (maksimal 3 MB).',
+        });
+      }
+
       const now = new Date();
       const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
       const randSuffix = String(Math.floor(1000 + Math.random() * 9000));
@@ -230,13 +236,21 @@ export default async function handler(req, res) {
     // 3. PATCH /api/complaints/:id/status
     const statusMatch = pathname.match(/^\/api\/complaints\/(\d+)\/status$/);
     if (req.method === 'PATCH' && statusMatch) {
+      const validTokens = new Set([
+        'FTL-SEC-LURAH-2026',
+        'FTL-SEC-TRANTIB-2026',
+        'FTL-SEC-ADMIN-2026',
+        'FTL-SEC-RT012-2026',
+        'FTL-SEC-GOOGLE-ADMIN',
+      ]);
       const officerHeader = req.headers['x-officer-role'];
+      const officerToken = String(req.headers['x-officer-token'] || '');
       const authHeader = req.headers.authorization;
 
-      if (!officerHeader && !authHeader) {
+      if ((!officerHeader || !validTokens.has(officerToken)) && !authHeader) {
         return res.status(403).json({
           error:
-            'Akses Ditolak: Warga tidak dapat mengubah data pengaduan. Silakan login sebagai Pegawai Kelurahan / Lurah.',
+            'Akses Ditolak: Token otorisasi petugas tidak valid. Silakan login kembali sebagai Pegawai Kelurahan / Lurah.',
         });
       }
 
