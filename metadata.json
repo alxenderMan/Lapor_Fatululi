@@ -1,0 +1,6 @@
+{
+  "name": "SIPEMAS Fatululi - Sistem Pengaduan Masyarakat Kelurahan Fatululi",
+  "description": "Platform pengaduan warga digital Kelurahan Fatululi, Kota Kupang yang terintegrasi dengan Pos RT/RW via QR Code, pelacakan transparan, serta ekspor Surat Pengantar PDF lintas sektoral.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

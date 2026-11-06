@@ -1,0 +1,6 @@
+{
+  "summary":  "Rencana arsitektur Service Layer PostgreSQL terpadu (frontend & backend) yang mendukung Cloud SQL otomatis maupun PostgreSQL kustom via .env serta selaras dengan tipe data ComplaintItem.",
+  "updatedAt":  "2026-11-02T07:05:22.227958916Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
