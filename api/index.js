@@ -85,6 +85,156 @@ export default async function handler(req, res) {
     const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = urlObj.pathname;
 
+    // 0. Officer Account Registration & Login (PostgreSQL officer_accounts table)
+    if (req.method === 'POST' && pathname === '/api/auth/register') {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+      const {
+        username,
+        nipOrCode,
+        password,
+        name,
+        jabatan,
+        role,
+        rtScope,
+        officeRegistrationCode,
+      } = body;
+
+      if (String(officeRegistrationCode || '').trim().toUpperCase() !== 'FATULULI-2026') {
+        return res.status(403).json({
+          error:
+            'Kode Otorisasi Kantor Kelurahan salah. Hubungi Lurah / Admin Utama untuk mendapatkan kode pendaftaran petugas.',
+        });
+      }
+
+      const cleanUser = String(username || '').trim().toLowerCase();
+      const cleanPass = String(password || '').trim();
+      const cleanName = String(name || '').trim();
+      const cleanNip = String(nipOrCode || cleanUser).trim();
+
+      if (!cleanUser || cleanPass.length < 6 || !cleanName) {
+        return res.status(400).json({
+          error: 'Username, Nama Lengkap, dan Kata Sandi (minimal 6 karakter) wajib diisi.',
+        });
+      }
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS officer_accounts (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          nip_or_code TEXT NOT NULL,
+          password TEXT NOT NULL,
+          full_name TEXT NOT NULL,
+          jabatan TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'staf_admin',
+          rt_scope TEXT DEFAULT '',
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        );
+      `);
+
+      const existing = await db.query(
+        'SELECT id FROM officer_accounts WHERE LOWER(username) = $1 OR LOWER(nip_or_code) = $2',
+        [cleanUser, cleanNip.toLowerCase()]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Username atau NIP tersebut sudah terdaftar. Silakan langsung masuk (Login).',
+        });
+      }
+
+      const validRole = ['lurah', 'kasi_trantib', 'staf_admin', 'ketua_rt'].includes(role)
+        ? role
+        : 'staf_admin';
+      const defaultJabatan =
+        jabatan ||
+        (validRole === 'lurah'
+          ? 'Lurah Fatululi'
+          : validRole === 'kasi_trantib'
+          ? 'Kasi Trantib Fatululi'
+          : validRole === 'ketua_rt'
+          ? `Ketua RT ${String(rtScope || '001').padStart(3, '0')}`
+          : 'Staf Administrasi Kelurahan');
+
+      const inserted = await db.query(
+        `INSERT INTO officer_accounts (username, nip_or_code, password, full_name, jabatan, role, rt_scope)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          cleanUser,
+          cleanNip,
+          cleanPass,
+          cleanName,
+          defaultJabatan,
+          validRole,
+          validRole === 'ketua_rt' ? String(rtScope || '012').padStart(3, '0') : '',
+        ]
+      );
+
+      const row = inserted.rows[0];
+      return res.status(201).json({
+        account: {
+          id: `custom-${row.id}`,
+          username: row.username,
+          securityToken: 'FTL-SEC-CUSTOM-2026',
+          name: row.full_name,
+          jabatan: row.jabatan,
+          role: row.role,
+          nipOrCode: row.nip_or_code,
+          rtScope: row.rt_scope || undefined,
+        },
+      });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/login') {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+      const cleanInput = String(body.usernameOrNip || '').trim().toLowerCase();
+      const cleanPass = String(body.password || '').trim();
+
+      if (!cleanInput || !cleanPass) {
+        return res.status(400).json({ error: 'Username/NIP dan Kata Sandi wajib diisi.' });
+      }
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS officer_accounts (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          nip_or_code TEXT NOT NULL,
+          password TEXT NOT NULL,
+          full_name TEXT NOT NULL,
+          jabatan TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'staf_admin',
+          rt_scope TEXT DEFAULT '',
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        );
+      `);
+
+      const found = await db.query(
+        `SELECT * FROM officer_accounts
+         WHERE (LOWER(username) = $1 OR LOWER(nip_or_code) = $1) AND password = $2
+         LIMIT 1`,
+        [cleanInput, cleanPass]
+      );
+
+      if (found.rows.length > 0) {
+        const row = found.rows[0];
+        return res.status(200).json({
+          account: {
+            id: `custom-${row.id}`,
+            username: row.username,
+            securityToken: 'FTL-SEC-CUSTOM-2026',
+            name: row.full_name,
+            jabatan: row.jabatan,
+            role: row.role,
+            nipOrCode: row.nip_or_code,
+            rtScope: row.rt_scope || undefined,
+          },
+        });
+      }
+
+      return res.status(401).json({
+        error: 'Username/NIP atau Kata Sandi tidak ditemukan.',
+      });
+    }
+
     // 1. GET /api/complaints/track
     if (req.method === 'GET' && pathname.startsWith('/api/complaints/track')) {
       const q = (urlObj.searchParams.get('q') || '').trim().toUpperCase();
@@ -242,6 +392,7 @@ export default async function handler(req, res) {
         'FTL-SEC-ADMIN-2026',
         'FTL-SEC-RT012-2026',
         'FTL-SEC-GOOGLE-ADMIN',
+        'FTL-SEC-CUSTOM-2026',
       ]);
       const officerHeader = req.headers['x-officer-role'];
       const officerToken = String(req.headers['x-officer-token'] || '');

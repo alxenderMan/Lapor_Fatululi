@@ -46,6 +46,8 @@ import {
   saveComplaint,
   saveSubsidyComplaint,
   updateComplaintStatus,
+  registerOfficerAccount,
+  loginOfficerAccount,
 } from './services/complaintService.ts';
 
 interface ActiveOfficerSession {
@@ -189,10 +191,23 @@ export default function App() {
   const [officerSession, setOfficerSession] = useState<ActiveOfficerSession | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
 
-  // Login Form State (Starts empty so public visitors cannot bypass authentication)
+  // Login & Registration Form State (Starts empty so public visitors cannot bypass authentication)
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
   const [loginNipInput, setLoginNipInput] = useState<string>('');
   const [loginPinInput, setLoginPinInput] = useState<string>('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [submittingAuth, setSubmittingAuth] = useState<boolean>(false);
+
+  // Registration Form State
+  const [regName, setRegName] = useState<string>('');
+  const [regUsername, setRegUsername] = useState<string>('');
+  const [regNip, setRegNip] = useState<string>('');
+  const [regRole, setRegRole] = useState<'lurah' | 'kasi_trantib' | 'staf_admin' | 'ketua_rt'>(
+    'staf_admin'
+  );
+  const [regRtScope, setRegRtScope] = useState<string>('012');
+  const [regPassword, setRegPassword] = useState<string>('');
+  const [regOfficeCode, setRegOfficeCode] = useState<string>('');
 
   // PostgreSQL Complaints State
   const [complaints, setComplaints] = useState<ComplaintItem[]>([]);
@@ -335,8 +350,8 @@ export default function App() {
     setTimeout(() => setToastBanner(null), 4000);
   };
 
-  // Officer Login Handler (Strict Username/NIP & Password Check)
-  const handleOfficerLoginSubmit = (e: React.FormEvent) => {
+  // Officer Login Handler (Checks Preset Accounts + PostgreSQL officer_accounts)
+  const handleOfficerLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
@@ -348,29 +363,109 @@ export default function App() {
       return;
     }
 
-    const matchedAccount = PRESET_OFFICER_ACCOUNTS.find(
+    const matchedPreset = PRESET_OFFICER_ACCOUNTS.find(
       (acc) =>
         (acc.username.toLowerCase() === inputUser.toLowerCase() ||
           acc.nipOrCode.toLowerCase() === inputUser.toLowerCase()) &&
         acc.password === inputPass
     );
 
-    if (!matchedAccount) {
-      setLoginError(
-        'Akses Ditolak: Username/NIP atau Kata Sandi Aparat tidak sesuai. Pastikan menggunakan akun resmi Kelurahan Fatululi.'
-      );
+    if (matchedPreset) {
+      setOfficerSession(matchedPreset);
+      setLoginPinInput('');
+      setAdminRtFilter(matchedPreset.rtScope || 'semua');
+      setActiveScreen('admin_panel');
+      showToast(`Selamat datang, ${matchedPreset.name} (${matchedPreset.jabatan}).`);
       return;
     }
 
-    setOfficerSession(matchedAccount);
-    setLoginPinInput('');
-    if (matchedAccount.rtScope) {
-      setAdminRtFilter(matchedAccount.rtScope);
-    } else {
-      setAdminRtFilter('semua');
+    setSubmittingAuth(true);
+    try {
+      const dbAccount = await loginOfficerAccount(inputUser, inputPass);
+      const customSession: ActiveOfficerSession = {
+        id: dbAccount.id,
+        username: dbAccount.username,
+        password: '',
+        securityToken: dbAccount.securityToken,
+        name: dbAccount.name,
+        jabatan: dbAccount.jabatan,
+        role: dbAccount.role,
+        nipOrCode: dbAccount.nipOrCode,
+        rtScope: dbAccount.rtScope,
+      };
+      setOfficerSession(customSession);
+      setLoginPinInput('');
+      setAdminRtFilter(customSession.rtScope || 'semua');
+      setActiveScreen('admin_panel');
+      showToast(`Selamat datang, ${customSession.name} (${customSession.jabatan}).`);
+    } catch (err: any) {
+      setLoginError(
+        err.message ||
+          'Akses Ditolak: Username/NIP atau Kata Sandi Aparat tidak sesuai. Pastikan menggunakan akun resmi Kelurahan Fatululi.'
+      );
+    } finally {
+      setSubmittingAuth(false);
     }
-    setActiveScreen('admin_panel');
-    showToast(`Selamat datang, ${matchedAccount.name} (${matchedAccount.jabatan}).`);
+  };
+
+  // Officer Registration Handler (Saves new Officer Account to PostgreSQL)
+  const handleOfficerRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+
+    if (!regName.trim() || !regUsername.trim() || !regPassword.trim() || !regOfficeCode.trim()) {
+      setLoginError('Mohon lengkapi Nama Lengkap, Username, Kata Sandi, dan Kode Otorisasi Kantor.');
+      return;
+    }
+
+    if (regPassword.trim().length < 6) {
+      setLoginError('Kata Sandi minimal 6 karakter.');
+      return;
+    }
+
+    setSubmittingAuth(true);
+    try {
+      const jabatanMap: Record<string, string> = {
+        lurah: 'Lurah Fatululi',
+        kasi_trantib: 'Kasi Trantib Fatululi',
+        staf_admin: 'Staf Administrasi Kelurahan',
+        ketua_rt: `Ketua RT ${regRtScope.padStart(3, '0')} Fatululi`,
+      };
+
+      const created = await registerOfficerAccount({
+        username: regUsername.trim(),
+        nipOrCode: regNip.trim() || regUsername.trim().toUpperCase(),
+        password: regPassword.trim(),
+        name: regName.trim(),
+        jabatan: jabatanMap[regRole] || 'Staf Administrasi Kelurahan',
+        role: regRole,
+        rtScope: regRole === 'ketua_rt' ? regRtScope.padStart(3, '0') : undefined,
+        officeRegistrationCode: regOfficeCode.trim(),
+      });
+
+      const newSession: ActiveOfficerSession = {
+        id: created.id,
+        username: created.username,
+        password: '',
+        securityToken: created.securityToken,
+        name: created.name,
+        jabatan: created.jabatan,
+        role: created.role,
+        nipOrCode: created.nipOrCode,
+        rtScope: created.rtScope,
+      };
+
+      setOfficerSession(newSession);
+      setRegPassword('');
+      setRegOfficeCode('');
+      setAdminRtFilter(newSession.rtScope || 'semua');
+      setActiveScreen('admin_panel');
+      showToast(`Akun berhasil dibuat! Selamat datang, ${newSession.name}.`);
+    } catch (err: any) {
+      setLoginError(err.message || 'Gagal mendaftarkan akun baru.');
+    } finally {
+      setSubmittingAuth(false);
+    }
   };
 
   const handleGoogleOfficerLogin = async () => {
@@ -1775,55 +1870,218 @@ export default function App() {
               </div>
             </div>
 
+            {/* Tab Switcher: Masuk Akun vs Buat Akun Baru */}
+            <div className="mb-5 bg-slate-100 p-1 rounded-2xl grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab('login');
+                  setLoginError(null);
+                }}
+                className={`py-2.5 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  authTab === 'login'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Masuk Akun (Login)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab('register');
+                  setLoginError(null);
+                }}
+                className={`py-2.5 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  authTab === 'register'
+                    ? 'bg-white text-[#1D4ED8] shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Buat Akun Baru
+              </button>
+            </div>
+
             {loginError && (
               <div className="mb-5 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs font-medium text-red-800">
                 {loginError}
               </div>
             )}
 
-            <form onSubmit={handleOfficerLoginSubmit} className="space-y-4">
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
-                Halaman ini khusus untuk <strong>Lurah, Kasi Trantib, Staf Administrasi, dan Ketua RT/RW Kelurahan Fatululi</strong>. Warga umum tidak memerlukan login untuk membuat atau melacak pengaduan.
-              </div>
+            {authTab === 'login' ? (
+              <form onSubmit={handleOfficerLoginSubmit} className="space-y-4">
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                  Halaman ini khusus untuk <strong>Lurah, Kasi Trantib, Staf Administrasi, dan Ketua RT/RW Kelurahan Fatululi</strong>. Warga umum tidak memerlukan login untuk membuat atau melacak pengaduan.
+                </div>
 
-              <div>
-                <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
-                  Username / NIP Akun Dinas *
-                </label>
-                <input
-                  type="text"
-                  value={loginNipInput}
-                  onChange={(e) => setLoginNipInput(e.target.value)}
-                  placeholder="Masukkan Username atau 18 digit NIP..."
-                  autoComplete="username"
-                  required
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                    Username / NIP Akun Dinas *
+                  </label>
+                  <input
+                    type="text"
+                    value={loginNipInput}
+                    onChange={(e) => setLoginNipInput(e.target.value)}
+                    placeholder="Masukkan Username atau 18 digit NIP..."
+                    autoComplete="username"
+                    required
+                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
-                  Kata Sandi / Password Aparat *
-                </label>
-                <input
-                  type="password"
-                  value={loginPinInput}
-                  onChange={(e) => setLoginPinInput(e.target.value)}
-                  placeholder="Masukkan kata sandi akun dinas..."
-                  autoComplete="current-password"
-                  required
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                    Kata Sandi / Password Aparat *
+                  </label>
+                  <input
+                    type="password"
+                    value={loginPinInput}
+                    onChange={(e) => setLoginPinInput(e.target.value)}
+                    placeholder="Masukkan kata sandi akun dinas..."
+                    autoComplete="current-password"
+                    required
+                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                className="w-full py-3.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>Masuk ke Dashboard Admin</span>
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={submittingAuth}
+                  className="w-full py-3.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>{submittingAuth ? 'Memverifikasi...' : 'Masuk ke Dashboard Admin'}</span>
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleOfficerRegisterSubmit} className="space-y-3.5">
+                <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-[11px] text-blue-900 leading-relaxed">
+                  Pendaftaran akun baru staf/RT-RW membutuhkan <strong>Kode Otorisasi Kantor Kelurahan</strong> dari Lurah atau Admin Utama agar warga luar tidak dapat membuat akun admin sembarangan.
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    Nama Lengkap & Gelar Petugas *
+                  </label>
+                  <input
+                    type="text"
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    placeholder="Contoh: Lukas Neno, S.AP"
+                    required
+                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                      Username Login *
+                    </label>
+                    <input
+                      type="text"
+                      value={regUsername}
+                      onChange={(e) => setRegUsername(e.target.value.replace(/\s+/g, ''))}
+                      placeholder="Contoh: lukas_ftl"
+                      required
+                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                      NIP / Kode RT (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={regNip}
+                      onChange={(e) => setRegNip(e.target.value)}
+                      placeholder="1985xxxxxxxx / RT-005"
+                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                      Jabatan / Peran *
+                    </label>
+                    <select
+                      value={regRole}
+                      onChange={(e) =>
+                        setRegRole(
+                          e.target.value as 'lurah' | 'kasi_trantib' | 'staf_admin' | 'ketua_rt'
+                        )
+                      }
+                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    >
+                      <option value="staf_admin">Staf Administrasi</option>
+                      <option value="kasi_trantib">Kasi Trantib & Pelayanan</option>
+                      <option value="lurah">Lurah Fatululi</option>
+                      <option value="ketua_rt">Ketua RT / RW</option>
+                    </select>
+                  </div>
+                  {regRole === 'ketua_rt' && (
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                        Nomor Wilayah RT *
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={3}
+                        value={regRtScope}
+                        onChange={(e) => setRegRtScope(e.target.value.replace(/\D/g, ''))}
+                        placeholder="012"
+                        required
+                        className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                      Buat Kata Sandi Baru *
+                    </label>
+                    <input
+                      type="password"
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter"
+                      required
+                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                      Kode Otorisasi Kantor *
+                    </label>
+                    <input
+                      type="password"
+                      value={regOfficeCode}
+                      onChange={(e) => setRegOfficeCode(e.target.value)}
+                      placeholder="Kode rahasia kantor..."
+                      required
+                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submittingAuth}
+                  className="w-full py-3.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <UserCheck className="w-4 h-4 text-[#F59E0B]" />
+                  <span>
+                    {submittingAuth
+                      ? 'Menyimpan Akun ke Database...'
+                      : 'Daftarkan Akun & Masuk Dashboard'}
+                  </span>
+                </button>
+              </form>
+            )}
 
             <div className="my-5 flex items-center gap-3 text-[11px] text-slate-400">
               <div className="h-px flex-1 bg-slate-200" />

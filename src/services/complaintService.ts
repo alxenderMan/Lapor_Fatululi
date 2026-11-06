@@ -96,3 +96,61 @@ export async function updateComplaintStatus(
 
   return data.complaint as ComplaintItem;
 }
+
+export interface OfficerAccountPayload {
+  username: string;
+  nipOrCode: string;
+  password: string;
+  name: string;
+  jabatan: string;
+  role: 'lurah' | 'kasi_trantib' | 'staf_admin' | 'ketua_rt';
+  rtScope?: string;
+  officeRegistrationCode: string;
+}
+
+export interface OfficerAccountResponse {
+  id: string;
+  username: string;
+  securityToken: string;
+  name: string;
+  jabatan: string;
+  role: 'lurah' | 'kasi_trantib' | 'staf_admin' | 'ketua_rt';
+  nipOrCode: string;
+  rtScope?: string;
+}
+
+export async function registerOfficerAccount(
+  payload: OfficerAccountPayload
+): Promise<OfficerAccountResponse> {
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.account) {
+    throw new Error(data.error || 'Gagal membuat akun petugas baru.');
+  }
+
+  return data.account as OfficerAccountResponse;
+}
+
+export async function loginOfficerAccount(
+  usernameOrNip: string,
+  password: string
+): Promise<OfficerAccountResponse> {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usernameOrNip, password }),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.account) {
+    throw new Error(data.error || 'Username/NIP atau Kata Sandi tidak sesuai.');
+  }
+
+  return data.account as OfficerAccountResponse;
+}
+
