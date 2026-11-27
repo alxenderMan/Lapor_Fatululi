@@ -284,13 +284,20 @@ export default function App() {
   const [readNotifIds, setReadNotifIds] = useState<number[]>([]);
   const [hideUrgentBanner, setHideUrgentBanner] = useState<boolean>(false);
 
-  // Status Update Modal for Admin Table Actions
+  // Status Update Modal & Modul Tindak Lanjut State for Admin Actions
   const [editingItem, setEditingItem] = useState<ComplaintItem | null>(null);
   const [modalStatus, setModalStatus] = useState<string>('koordinasi_rt_rw');
   const [modalAgency, setModalAgency] = useState<string>(AGENCY_LIST[0]);
+  const [modalLetterNo, setModalLetterNo] = useState<string>('');
   const [modalNotes, setModalNotes] = useState<string>('');
   const [savingModal, setSavingModal] = useState<boolean>(false);
   const [toastBanner, setToastBanner] = useState<string | null>(null);
+
+  // Admin Module Refs for Sidebar Navigation
+  const adminTableSectionRef = useRef<HTMLDivElement | null>(null);
+  const adminTindakLanjutRef = useRef<HTMLDivElement | null>(null);
+  const adminSuratSectionRef = useRef<HTMLDivElement | null>(null);
+  const adminArsipSectionRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToWorkspace = (targetTab?: CitizenTab) => {
     setActiveScreen('portal_warga');
@@ -668,32 +675,28 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // Protected Admin Table Action Button Click Handler
+  // Protected Admin Table Action Button Click Handler (Opens Modul Tindak Lanjut for ALL categories)
   const handleAdminRowAction = (item: ComplaintItem) => {
     if (!officerSession) {
       setActiveScreen('login_aparat');
       return;
     }
 
-    if (item.category === 'umum_lingkungan' || item.ticketNumber === 'FTL-035') {
-      generateOfficialReferralLetterPDF(
-        item,
-        officerSession.name,
-        officerSession.jabatan
-      );
-      showToast(`Surat Pengantar Polsek untuk #${item.ticketNumber} berhasil diunduh (.PDF)`);
-      return;
-    }
-
+    setSelectedLetterTicketId(item.id);
     setEditingItem(item);
-    setModalStatus(
-      item.category === 'musibah_darurat'
-        ? 'diteruskan_instansi'
-        : item.status === 'menunggu_verifikasi'
+
+    const nextSuggestedStatus =
+      item.status === 'menunggu_verifikasi'
+        ? 'ditinjau_kelurahan'
+        : item.status === 'ditinjau_kelurahan'
         ? 'koordinasi_rt_rw'
-        : 'selesai'
-    );
+        : item.status === 'koordinasi_rt_rw'
+        ? 'diteruskan_instansi'
+        : 'selesai';
+
+    setModalStatus(nextSuggestedStatus);
     setModalAgency(item.targetAgency || AGENCY_LIST[0]);
+    setModalLetterNo(item.officialLetterNumber || '');
     setModalNotes(item.adminNotes || '');
   };
 
@@ -702,13 +705,13 @@ export default function App() {
     if (!editingItem || !officerSession) return;
     setSavingModal(true);
     try {
-      await updateComplaintStatus(
+      const updated = await updateComplaintStatus(
         editingItem.id,
         {
           status: modalStatus,
           targetAgency: modalAgency,
-          officialLetterNumber: editingItem.officialLetterNumber,
-          adminNotes: modalNotes,
+          officialLetterNumber: modalLetterNo.trim() || editingItem.officialLetterNumber,
+          adminNotes: modalNotes.trim(),
           actorName: officerSession.name,
           actorRole: officerSession.jabatan,
         },
@@ -717,11 +720,15 @@ export default function App() {
       );
       setEditingItem(null);
       await loadComplaints();
+      setTrackedComplaint(updated);
       showToast(
-        `Status tiket #${editingItem.ticketNumber} berhasil diperbarui oleh ${officerSession.name}.`
+        `Tindak lanjut tiket #${editingItem.ticketNumber} berhasil disimpan (${modalStatus.replace(
+          /_/g,
+          ' '
+        )}) oleh ${officerSession.name}.`
       );
     } catch (err: any) {
-      showToast(err.message || 'Gagal memperbarui status.');
+      showToast(err.message || 'Gagal memperbarui status tindak lanjut.');
     } finally {
       setSavingModal(false);
     }
@@ -2753,19 +2760,29 @@ export default function App() {
                       {[
                         {
                           id: 'dashboard',
-                          label: 'Dashboard & Aduan Masuk',
+                          label: `Dashboard & Aduan Masuk (${complaints.length})`,
+                        },
+                        {
+                          id: 'tindak_lanjut',
+                          label: 'Modul Tindak Lanjut Pengaduan',
                         },
                         {
                           id: 'rahasia',
-                          label: 'Aduan Khusus / Rahasia (4)',
+                          label: `Aduan Khusus / Rahasia (${
+                            complaints.filter((c) => c.category === 'khusus_rahasia').length
+                          })`,
                         },
                         {
                           id: 'subsidi',
-                          label: 'Aduan Subsidi Minyak (9)',
+                          label: `Aduan Subsidi Minyak (${
+                            complaints.filter((c) => c.category === 'subsidi_minyak_tanah').length
+                          })`,
                         },
                         {
                           id: 'darurat',
-                          label: 'Musibah / Darurat (1)',
+                          label: `Musibah / Darurat (${
+                            complaints.filter((c) => c.category === 'musibah_darurat').length
+                          })`,
                         },
                       ].map((menu) => {
                         const isActive = adminSidebarMenu === menu.id;
@@ -2773,7 +2790,31 @@ export default function App() {
                           <button
                             key={menu.id}
                             type="button"
-                            onClick={() => setAdminSidebarMenu(menu.id)}
+                            onClick={() => {
+                              setAdminSidebarMenu(menu.id);
+                              if (menu.id === 'dashboard' || menu.id === 'tindak_lanjut') {
+                                setAdminCategoryFilter('semua');
+                              } else if (menu.id === 'rahasia') {
+                                setAdminCategoryFilter('khusus_rahasia');
+                              } else if (menu.id === 'subsidi') {
+                                setAdminCategoryFilter('subsidi_minyak_tanah');
+                              } else if (menu.id === 'darurat') {
+                                setAdminCategoryFilter('musibah_darurat');
+                              }
+                              setTimeout(() => {
+                                if (menu.id === 'tindak_lanjut') {
+                                  adminTindakLanjutRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                } else {
+                                  adminTableSectionRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                }
+                              }, 60);
+                            }}
                             className={`w-fit px-3.5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                               isActive
                                 ? 'bg-[#E11D2E] text-white shadow-xs'
@@ -2812,6 +2853,10 @@ export default function App() {
                     <div className="mt-2 pl-2 flex flex-col items-start gap-1.5">
                       {[
                         {
+                          id: 'tindak_lanjut',
+                          label: 'Modul Tindak Lanjut & Disposisi',
+                        },
+                        {
                           id: 'surat',
                           label: 'Buat Surat Pengantar Dinas',
                         },
@@ -2833,7 +2878,32 @@ export default function App() {
                           <button
                             key={menu.id}
                             type="button"
-                            onClick={() => setAdminSidebarMenu(menu.id)}
+                            onClick={() => {
+                              setAdminSidebarMenu(menu.id);
+                              setTimeout(() => {
+                                if (menu.id === 'tindak_lanjut') {
+                                  adminTindakLanjutRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                } else if (menu.id === 'surat') {
+                                  adminSuratSectionRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                } else if (menu.id === 'arsip') {
+                                  adminArsipSectionRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                } else {
+                                  adminTindakLanjutRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                                }
+                              }, 60);
+                            }}
                             className={`w-fit px-3.5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                               isActive
                                 ? 'bg-[#E11D2E] text-white shadow-xs'
@@ -3044,6 +3114,21 @@ export default function App() {
                     const target =
                       complaints.find((c) => c.id === selectedLetterTicketId) || complaints[0];
                     if (target) {
+                      handleAdminRowAction(target);
+                    }
+                  }}
+                  className="bg-[#0B0B0C] hover:bg-[#262629] text-white font-extrabold text-xs px-4 py-2.5 inline-flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#E11D2E]" />
+                  <span>Modul Tindak Lanjut</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target =
+                      complaints.find((c) => c.id === selectedLetterTicketId) || complaints[0];
+                    if (target) {
                       generateOfficialReferralLetterPDF(
                         target,
                         officerSession.name,
@@ -3118,24 +3203,24 @@ export default function App() {
             {/* 4 KPI Summary Cards Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 px-8 pt-6">
               <div className="bg-white border border-neutral-200 border-t-4 border-t-[#0B0B0C] p-5">
-                <div className="text-xs font-semibold text-neutral-500">Total Aduan Bulan Ini</div>
+                <div className="text-xs font-semibold text-neutral-500">Total Aduan Terdaftar</div>
                 <div className="text-2xl font-extrabold text-neutral-950 mt-1.5 tabular-nums">
-                  {Math.max(48, complaints.length + 44)}
+                  {complaints.length}
                 </div>
                 <div className="text-xs font-bold text-emerald-700 mt-2">
-                  Terekam di Arsip Digital
+                  Tersimpan di Database PostgreSQL
                 </div>
               </div>
 
               <div className="bg-white border border-neutral-200 border-t-4 border-t-[#262629] p-5">
                 <div className="text-xs font-semibold text-neutral-500">
-                  Menunggu Verifikasi & RT
+                  Sedang Ditindaklanjuti & RT
                 </div>
                 <div className="text-2xl font-extrabold text-neutral-900 mt-1.5 tabular-nums">
-                  12
+                  {countInProgress}
                 </div>
                 <div className="text-xs font-bold text-neutral-700 mt-2">
-                  Perlu Koordinasi RT/RW
+                  Perlu Verifikasi / Mediasi RT-RW
                 </div>
               </div>
 
@@ -3143,7 +3228,9 @@ export default function App() {
                 <div className="text-xs font-extrabold text-neutral-800">
                   Aduan Subsidi Minyak Tanah
                 </div>
-                <div className="text-2xl font-extrabold text-[#E11D2E] mt-1.5 tabular-nums">9</div>
+                <div className="text-2xl font-extrabold text-[#E11D2E] mt-1.5 tabular-nums">
+                  {complaints.filter((c) => c.category === 'subsidi_minyak_tanah').length}
+                </div>
                 <div className="text-xs font-bold text-neutral-600 mt-2">
                   Laporan Pangkalan/Kuota
                 </div>
@@ -3151,43 +3238,403 @@ export default function App() {
 
               <div className="bg-[#262629] text-white border-t-4 border-t-[#E11D2E] p-5">
                 <div className="text-xs font-extrabold text-neutral-300">
-                  Darurat / Lintas Instansi
+                  Selesai & Diteruskan Instansi
                 </div>
-                <div className="text-2xl font-extrabold text-[#E11D2E] mt-1.5 tabular-nums">3</div>
+                <div className="text-2xl font-extrabold text-[#E11D2E] mt-1.5 tabular-nums">
+                  {countResolved}
+                </div>
                 <div className="text-xs font-bold text-neutral-300 mt-2">
-                  Polsek / BPBD / Damkar
+                  Polsek / BPBD / Damkar / Arsip
                 </div>
               </div>
             </div>
 
+            {/* ===============================================================
+                DEDICATED INTERACTIVE MODUL TINDAK LANJUT & DISPOSISI PENGADUAN
+               =============================================================== */}
+            <div
+              ref={adminTindakLanjutRef}
+              className="bg-white border border-neutral-300 border-t-4 border-t-[#E11D2E] p-6 mx-8 mt-6 shadow-xs"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-neutral-200">
+                <div>
+                  <span className="text-[11px] font-extrabold text-[#E11D2E] uppercase tracking-widest">
+                    Modul Utama Petugas & Lurah
+                  </span>
+                  <h2 className="text-base sm:text-lg font-extrabold text-neutral-950 mt-0.5">
+                    Modul Tindak Lanjut, Verifikasi & Disposisi Pengaduan Warga
+                  </h2>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-neutral-600 font-semibold">
+                    Pilih Tiket untuk Ditindaklanjuti:
+                  </span>
+                  <select
+                    value={selectedLetterTicketId}
+                    onChange={(e) => {
+                      const nextId = Number(e.target.value);
+                      setSelectedLetterTicketId(nextId);
+                      const found = complaints.find((c) => c.id === nextId);
+                      if (found) {
+                        setSelectedLetterAgency(found.targetAgency || AGENCY_LIST[0]);
+                      }
+                    }}
+                    className="bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2 text-xs font-extrabold text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
+                  >
+                    {complaints.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        #{c.ticketNumber} — {c.title} (RT {c.rtNumber})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target =
+                        complaints.find((c) => c.id === selectedLetterTicketId) || complaints[0];
+                      if (target) {
+                        handleAdminRowAction(target);
+                      }
+                    }}
+                    className="px-4 py-2 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs cursor-pointer transition-colors"
+                  >
+                    Buka Form Tindak Lanjut
+                  </button>
+                </div>
+              </div>
+
+              {(() => {
+                const activeAdminItem =
+                  complaints.find((c) => c.id === selectedLetterTicketId) || complaints[0];
+                if (!activeAdminItem) return null;
+
+                const statusLabelMap: Record<string, string> = {
+                  menunggu_verifikasi: '1. Menunggu Verifikasi Kelurahan',
+                  ditinjau_kelurahan: '2. Diverifikasi oleh Pegawai Kelurahan',
+                  koordinasi_rt_rw: '3. Koordinasi RT/RW & Mediasi Lapangan',
+                  diteruskan_instansi: '4. Diteruskan ke Instansi Terkait',
+                  selesai: '5. Selesai Ditindaklanjuti & Terekam Arsip',
+                };
+
+                return (
+                  <div className="mt-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    {/* Left 7 Cols: Selected Ticket Full Details & Log History */}
+                    <div className="lg:col-span-7 bg-[#F9F9F9] border border-neutral-200 p-5 space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="px-3 py-1 bg-[#262629] text-white font-mono text-xs font-extrabold">
+                          #{activeAdminItem.ticketNumber}
+                        </span>
+                        <span
+                          className={`px-3 py-1 text-xs font-extrabold ${
+                            activeAdminItem.status === 'selesai'
+                              ? 'bg-emerald-700 text-white'
+                              : activeAdminItem.status === 'diteruskan_instansi'
+                              ? 'bg-[#262629] text-white'
+                              : 'bg-[#E11D2E] text-white'
+                          }`}
+                        >
+                          {statusLabelMap[activeAdminItem.status] || activeAdminItem.status}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm sm:text-base font-extrabold text-neutral-950">
+                          {activeAdminItem.title}
+                        </h3>
+                        <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
+                          {activeAdminItem.description}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-neutral-200 text-xs">
+                        <div>
+                          <span className="text-neutral-500 block">Pelapor & NIK:</span>
+                          <span className="font-bold text-neutral-900">
+                            {activeAdminItem.reporterName} ({activeAdminItem.nikMasked})
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block">Lokasi Wilayah:</span>
+                          <span className="font-bold text-neutral-900">
+                            RT {activeAdminItem.rtNumber} / RW {activeAdminItem.rwNumber} •{' '}
+                            {activeAdminItem.qrSourcePost}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block">Instansi Disposisi:</span>
+                          <span className="font-bold text-neutral-900">
+                            {activeAdminItem.targetAgency || 'Internal Kelurahan Fatululi'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block">Nomor Surat Resmi:</span>
+                          <span className="font-mono font-bold text-[#E11D2E]">
+                            {activeAdminItem.officialLetterNumber || 'Belum Diterbitkan'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-white border-l-4 border-[#262629] text-xs">
+                        <span className="font-extrabold text-neutral-900 block">
+                          Catatan Tindak Lanjut / Mediasi Terakhir:
+                        </span>
+                        <p className="text-neutral-700 mt-0.5">
+                          {activeAdminItem.adminNotes ||
+                            'Belum ada catatan mediasi. Klik tombol di kanan untuk memperbarui tahapan tindak lanjut.'}
+                        </p>
+                        {activeAdminItem.verifiedByName && (
+                          <span className="text-[11px] text-emerald-700 font-bold block mt-1">
+                            Diverifikasi oleh: {activeAdminItem.verifiedByName}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Riwayat Log Tindak Lanjut */}
+                      {activeAdminItem.logs && activeAdminItem.logs.length > 0 && (
+                        <div className="pt-2">
+                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-neutral-500 block mb-2">
+                            Riwayat Log Penanganan ({activeAdminItem.logs.length} Tahap):
+                          </span>
+                          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                            {activeAdminItem.logs.map((log) => (
+                              <div
+                                key={log.id}
+                                className="text-[11px] bg-white border border-neutral-200 px-3 py-2 flex items-start justify-between gap-2"
+                              >
+                                <div>
+                                  <span className="font-extrabold text-neutral-900">
+                                    [{log.status.replace(/_/g, ' ').toUpperCase()}]
+                                  </span>{' '}
+                                  <span className="text-neutral-700">{log.note}</span>
+                                </div>
+                                <span className="text-neutral-500 font-semibold shrink-0">
+                                  {log.actorName}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right 5 Cols: Quick Action Triggers for This Ticket */}
+                    <div className="lg:col-span-5 bg-[#262629] text-white p-5 space-y-4">
+                      <div>
+                        <span className="text-[11px] font-extrabold text-[#E11D2E] uppercase tracking-wider">
+                          Aksi Cepat Petugas ({officerSession.jabatan})
+                        </span>
+                        <h4 className="text-sm font-extrabold text-white mt-0.5">
+                          Proses Tindak Lanjut Tiket #{activeAdminItem.ticketNumber}
+                        </h4>
+                        <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                          Perbarui status verifikasi, catat hasil koordinasi bersama Ketua RT{' '}
+                          {activeAdminItem.rtNumber}, atau terbitkan surat pengantar resmi ke
+                          instansi terkait.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAdminRowAction(activeAdminItem)}
+                          className="w-full py-3 px-4 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Update Status, Disposisi & Catatan Mediasi</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            generateOfficialReferralLetterPDF(
+                              {
+                                ...activeAdminItem,
+                                targetAgency:
+                                  activeAdminItem.targetAgency || selectedLetterAgency,
+                              },
+                              officerSession.name,
+                              officerSession.jabatan
+                            );
+                            showToast(
+                              `Surat Pengantar Resmi untuk #${activeAdminItem.ticketNumber} berhasil diunduh (.PDF).`
+                            );
+                          }}
+                          className="w-full py-3 px-4 bg-white hover:bg-neutral-200 text-neutral-950 font-extrabold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-4 h-4 text-[#E11D2E]" />
+                          <span>Cetak Surat Pengantar Instansi (.PDF)</span>
+                        </button>
+                      </div>
+
+                      {/* Quick 1-Click Stage Progression Buttons */}
+                      <div className="pt-3 border-t border-neutral-700">
+                        <span className="text-[11px] font-bold text-neutral-300 block mb-2">
+                          Ubah Cepat Tahapan Status:
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            {
+                              code: 'ditinjau_kelurahan',
+                              label: '2. Verifikasi Kelurahan',
+                            },
+                            {
+                              code: 'koordinasi_rt_rw',
+                              label: '3. Mediasi RT/RW',
+                            },
+                            {
+                              code: 'diteruskan_instansi',
+                              label: '4. Teruskan Instansi',
+                            },
+                            {
+                              code: 'selesai',
+                              label: '5. Tandai Selesai',
+                            },
+                          ].map((st) => (
+                            <button
+                              key={st.code}
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const updated = await updateComplaintStatus(
+                                    activeAdminItem.id,
+                                    {
+                                      status: st.code,
+                                      targetAgency:
+                                        activeAdminItem.targetAgency || AGENCY_LIST[0],
+                                      officialLetterNumber:
+                                        activeAdminItem.officialLetterNumber,
+                                      adminNotes:
+                                        activeAdminItem.adminNotes ||
+                                        `Status diperbarui ke tahapan ${st.label} oleh ${officerSession.name}.`,
+                                      actorName: officerSession.name,
+                                      actorRole: officerSession.jabatan,
+                                    },
+                                    officerSession.role,
+                                    officerSession.securityToken
+                                  );
+                                  await loadComplaints();
+                                  setTrackedComplaint(updated);
+                                  showToast(
+                                    `Tiket #${activeAdminItem.ticketNumber} diperbarui ke "${st.label}".`
+                                  );
+                                } catch (err: any) {
+                                  showToast(err.message || 'Gagal mengubah status cepat.');
+                                }
+                              }}
+                              className={`py-2 px-2.5 text-[11px] font-bold text-left transition-colors cursor-pointer ${
+                                activeAdminItem.status === st.code
+                                  ? 'bg-[#E11D2E] text-white'
+                                  : 'bg-[#1A1A1D] hover:bg-neutral-800 text-neutral-200'
+                              }`}
+                            >
+                              {st.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Conditional Sidebar Module: Cetak Poster QR Pos RT/RW */}
+            {adminSidebarMenu === 'qr_poster' && (
+              <div className="bg-white border border-neutral-300 border-t-4 border-t-[#0B0B0C] p-6 mx-8 mt-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <span className="text-[11px] font-extrabold text-[#E11D2E] uppercase tracking-wider">
+                      Modul Barcode Wilayah RT/RW
+                    </span>
+                    <h3 className="text-base font-extrabold text-neutral-950 mt-0.5">
+                      Generator Poster QR Code Pos Pengaduan RT 001 – RT 015
+                    </h3>
+                    <p className="text-xs text-neutral-600 mt-1">
+                      Pilih nomor wilayah RT untuk menampilkan kode QR resmi yang dapat ditempel di
+                      papan pengumuman Pos RT/RW Kelurahan Fatululi.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {['003', '008', '012', '014', '015'].map((rt) => (
+                      <button
+                        key={rt}
+                        type="button"
+                        onClick={() => setSelectedQrPosRt(rt)}
+                        className={`px-3.5 py-2 text-xs font-extrabold cursor-pointer ${
+                          selectedQrPosRt === rt
+                            ? 'bg-[#E11D2E] text-white'
+                            : 'bg-[#EEEEEE] text-neutral-800 hover:bg-neutral-300'
+                        }`}
+                      >
+                        Pos RT {rt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-5 p-6 bg-[#F9F9F9] border border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-5">
+                    <div className="bg-white p-3.5 border border-neutral-300">
+                      <QRCodeSVG
+                        value={`${window.location.origin}/?pos=POS-RT${selectedQrPosRt}`}
+                        size={112}
+                        fgColor="#0B0B0C"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-sm font-extrabold text-neutral-950">
+                        POS PENGADUAN WARGA RT {selectedQrPosRt} — KELURAHAN FATULULI
+                      </div>
+                      <div className="text-xs text-neutral-600 mt-1">
+                        Kode Pos: <span className="font-mono font-bold">POS-RT{selectedQrPosRt}-FATULULI</span>
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-1">
+                        Pindai QR menggunakan kamera HP untuk langsung membuka Formulir Pengaduan
+                        Warga RT {selectedQrPosRt}.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-5 py-3 bg-[#0B0B0C] hover:bg-[#262629] text-white font-extrabold text-xs inline-flex items-center gap-2 cursor-pointer shrink-0"
+                  >
+                    <Printer className="w-4 h-4 text-[#E11D2E]" />
+                    <span>Cetak Poster QR RT {selectedQrPosRt}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Real-Time Complaints Table Card */}
-            <div className="bg-white border border-neutral-200 p-6 mx-8 mt-6">
+            <div
+              ref={adminTableSectionRef}
+              className="bg-white border border-neutral-200 p-6 mx-8 mt-6"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-extrabold text-neutral-950">
                   Daftar Pengaduan Warga (Real-Time dari Web & Barcode Pos RT)
                 </h2>
-                {adminSidebarMenu === 'akun' && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] text-neutral-500 mr-1">Ganti Peran Aktif:</span>
-                    {PRESET_OFFICER_ACCOUNTS.map((acc) => (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => {
-                          setOfficerSession(acc);
-                          showToast(`Beralih peran ke ${acc.jabatan} (${acc.name})`);
-                        }}
-                        className={`px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
-                          officerSession.id === acc.id
-                            ? 'bg-[#E11D2E] text-white'
-                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                        }`}
-                      >
-                        {acc.jabatan}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-neutral-500 mr-1">Ganti Peran Testing:</span>
+                  {PRESET_OFFICER_ACCOUNTS.map((acc) => (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => {
+                        setOfficerSession(acc);
+                        setAdminRtFilter(acc.rtScope || 'semua');
+                        showToast(`Beralih peran ke ${acc.jabatan} (${acc.name})`);
+                      }}
+                      className={`px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
+                        officerSession.id === acc.id
+                          ? 'bg-[#E11D2E] text-white'
+                          : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                      }`}
+                    >
+                      {acc.jabatan}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Search & Filter Row */}
@@ -3237,39 +3684,60 @@ export default function App() {
                       <th className="py-3.5 px-4">ID & WAKTU</th>
                       <th className="py-3.5 px-4">PELAPOR & NIK</th>
                       <th className="py-3.5 px-4">KATEGORI & SIFAT</th>
-                      <th className="py-3.5 px-4">RINGKASAN MASALAH & RT</th>
-                      <th className="py-3.5 px-4">STATUS & TINDAKAN</th>
+                      <th className="py-3.5 px-4">RINGKASAN MASALAH, RT & CATATAN</th>
+                      <th className="py-3.5 px-4">STATUS & TINDAK LANJUT</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200 text-xs">
                     {filteredAdminRows.map((row) => {
                       const displayTicket = row.ticketNumber.replace('FTL-2026-', 'FTL-');
-                      const timeLabel =
-                        displayTicket === 'FTL-045'
-                          ? 'Hari Ini, 10:12'
-                          : displayTicket === 'FTL-042'
-                          ? 'Kemarin'
-                          : displayTicket === 'FTL-039'
-                          ? '27 Okt 2026'
-                          : displayTicket === 'FTL-035'
-                          ? '25 Okt 2026'
-                          : 'Hari Ini';
+                      const statusBadgeMap: Record<
+                        string,
+                        { label: string; className: string }
+                      > = {
+                        menunggu_verifikasi: {
+                          label: '1. Menunggu Verifikasi',
+                          className: 'bg-amber-100 text-amber-900 border border-amber-300',
+                        },
+                        ditinjau_kelurahan: {
+                          label: '2. Ditinjau Kelurahan',
+                          className: 'bg-neutral-200 text-neutral-900',
+                        },
+                        koordinasi_rt_rw: {
+                          label: '3. Koordinasi RT/RW & Mediasi',
+                          className: 'bg-neutral-800 text-white',
+                        },
+                        diteruskan_instansi: {
+                          label: '4. Diteruskan ke Instansi',
+                          className: 'bg-[#262629] text-white border-l-4 border-[#E11D2E]',
+                        },
+                        selesai: {
+                          label: '5. Selesai Ditindaklanjuti',
+                          className: 'bg-emerald-700 text-white',
+                        },
+                      };
+                      const badge = statusBadgeMap[row.status] || {
+                        label: row.status,
+                        className: 'bg-neutral-200 text-neutral-800',
+                      };
 
                       return (
                         <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
-                          <td className="py-4 px-4 align-middle whitespace-nowrap">
+                          <td className="py-4 px-4 align-top whitespace-nowrap">
                             <div className="font-extrabold text-neutral-950">#{displayTicket}</div>
-                            <div className="text-[11px] text-neutral-500 mt-0.5">{timeLabel}</div>
+                            <div className="text-[11px] text-neutral-500 mt-0.5">
+                              RT {row.rtNumber} / RW {row.rwNumber}
+                            </div>
                           </td>
 
-                          <td className="py-4 px-4 align-middle whitespace-nowrap">
+                          <td className="py-4 px-4 align-top whitespace-nowrap">
                             {row.isConfidential || row.category === 'khusus_rahasia' ? (
                               <>
                                 <div className="font-bold text-[#E11D2E]">
                                   [Identitas Dirahasiakan]
                                 </div>
                                 <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                                  NIK Terverifikasi Sistem
+                                  {row.nikMasked} • Terverifikasi
                                 </div>
                               </>
                             ) : (
@@ -3278,13 +3746,13 @@ export default function App() {
                                   {row.reporterName}
                                 </div>
                                 <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                                  NIK Warga Valid
+                                  {row.nikMasked} • Valid
                                 </div>
                               </>
                             )}
                           </td>
 
-                          <td className="py-4 px-4 align-middle whitespace-nowrap">
+                          <td className="py-4 px-4 align-top whitespace-nowrap">
                             {row.category === 'musibah_darurat' && (
                               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#E11D2E] text-white font-extrabold text-[11px]">
                                 Musibah / Darurat
@@ -3305,61 +3773,61 @@ export default function App() {
                                 Umum / Batas Tanah
                               </span>
                             )}
-                          </td>
-
-                          <td className="py-4 px-4 align-middle">
-                            <div className="font-extrabold text-neutral-900">
-                              {displayTicket === 'FTL-042'
-                                ? 'Polusi Bau Kandang Ternak Babi'
-                                : row.title}
-                            </div>
-                            <div className="text-[11px] text-neutral-500 mt-0.5">
-                              {displayTicket === 'FTL-045'
-                                ? 'Pos RT 003 / RW 001 • Ada Bukti Foto'
-                                : displayTicket === 'FTL-042'
-                                ? 'RT 012 / RW 004 • Koordinasi Ketua RT'
-                                : displayTicket === 'FTL-039'
-                                ? 'RT 008 / RW 003 • Pangkalan Oebobo'
-                                : displayTicket === 'FTL-035'
-                                ? 'RT 015 / RW 005 • Perlu Mediasi Lanjutan'
-                                : `RT ${row.rtNumber} / RW ${row.rwNumber} • ${row.status}`}
+                            <div className="text-[10px] text-neutral-500 mt-1">
+                              Disposisi: {row.targetAgency || 'Internal Kelurahan'}
                             </div>
                           </td>
 
-                          <td className="py-4 px-4 align-middle whitespace-nowrap">
-                            {row.category === 'musibah_darurat' ? (
-                              <button
-                                type="button"
-                                onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs text-center transition-colors cursor-pointer"
-                              >
-                                Teruskan ke BPBD / Damkar
-                              </button>
-                            ) : row.category === 'khusus_rahasia' ? (
-                              <button
-                                type="button"
-                                onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 bg-white hover:bg-neutral-100 border border-neutral-400 text-neutral-900 font-extrabold text-xs text-center transition-colors cursor-pointer"
-                              >
-                                Update Status / Mediasi
-                              </button>
-                            ) : row.category === 'subsidi_minyak_tanah' ? (
-                              <button
-                                type="button"
-                                onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 bg-white hover:bg-neutral-100 border border-neutral-400 text-neutral-900 font-extrabold text-xs text-center transition-colors cursor-pointer"
-                              >
-                                Verifikasi Bersama RT {row.rtNumber}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 bg-[#262629] hover:bg-neutral-800 text-white font-extrabold text-xs text-center transition-colors cursor-pointer"
-                              >
-                                Cetak Pengantar Polsek
-                              </button>
+                          <td className="py-4 px-4 align-top max-w-md">
+                            <div className="font-extrabold text-neutral-900">{row.title}</div>
+                            <div className="text-[11px] text-neutral-600 mt-1 line-clamp-2">
+                              {row.adminNotes
+                                ? `Catatan Petugas: ${row.adminNotes}`
+                                : row.description}
+                            </div>
+                            {row.officialLetterNumber && (
+                              <div className="text-[10px] font-mono font-bold text-[#E11D2E] mt-1">
+                                No. Surat: {row.officialLetterNumber}
+                              </div>
                             )}
+                          </td>
+
+                          <td className="py-4 px-4 align-top whitespace-nowrap">
+                            <div className="flex flex-col gap-1.5">
+                              <span
+                                className={`inline-block px-2.5 py-1 text-[10px] font-extrabold text-center ${badge.className}`}
+                              >
+                                {badge.label}
+                              </span>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdminRowAction(row)}
+                                  className="flex-1 py-2 px-3 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-[11px] text-center transition-colors cursor-pointer"
+                                >
+                                  Tindak Lanjut / Status
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    generateOfficialReferralLetterPDF(
+                                      row,
+                                      officerSession.name,
+                                      officerSession.jabatan
+                                    );
+                                    showToast(
+                                      `Surat Pengantar untuk #${row.ticketNumber} berhasil diunduh (.PDF)`
+                                    );
+                                  }}
+                                  title="Cetak Surat Pengantar PDF"
+                                  className="py-2 px-2.5 bg-[#262629] hover:bg-neutral-800 text-white font-extrabold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  <Printer className="w-3.5 h-3.5 text-[#E11D2E]" />
+                                  <span>PDF</span>
+                                </button>
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -3372,7 +3840,10 @@ export default function App() {
             {/* Bottom 2-Column Action Cards Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mx-8 my-6">
               {/* Bottom Left: Pembuatan Surat Pengantar Lintas Instansi */}
-              <div className="bg-white border border-neutral-200 p-6 flex flex-col justify-between">
+              <div
+                ref={adminSuratSectionRef}
+                className="bg-white border border-neutral-200 p-6 flex flex-col justify-between"
+              >
                 <div>
                   <h3 className="text-sm font-extrabold text-neutral-950 flex items-center gap-2">
                     <Printer className="w-4 h-4 text-[#E11D2E]" />
@@ -3446,7 +3917,10 @@ export default function App() {
               </div>
 
               {/* Bottom Right: Manajemen Arsip Digital & Ekspor PDF Berkala */}
-              <div className="bg-white border border-neutral-200 p-6 flex flex-col justify-between">
+              <div
+                ref={adminArsipSectionRef}
+                className="bg-white border border-neutral-200 p-6 flex flex-col justify-between"
+              >
                 <div>
                   <h3 className="text-sm font-extrabold text-neutral-950 flex items-center gap-2">
                     <FileText className="w-4 h-4 text-[#E11D2E]" />
@@ -3513,18 +3987,18 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal for Updating Status / Mediasi */}
+      {/* Modal for Updating Status / Mediasi / Disposisi Tindak Lanjut */}
       {editingItem && officerSession && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white border border-neutral-300 border-t-4 border-t-[#E11D2E] max-w-lg w-full p-7 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 mb-5 border-b border-neutral-200">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-neutral-300 border-t-4 border-t-[#E11D2E] max-w-xl w-full p-7 shadow-2xl my-8">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-neutral-200">
               <div>
                 <span className="text-xs font-extrabold text-[#E11D2E]">
                   #{editingItem.ticketNumber} • RT {editingItem.rtNumber} / RW{' '}
-                  {editingItem.rwNumber}
+                  {editingItem.rwNumber} • {editingItem.subCategory}
                 </span>
                 <h3 className="text-base font-extrabold text-neutral-950 mt-0.5">
-                  Tindak Lanjut & Verifikasi ({officerSession.jabatan})
+                  Modul Tindak Lanjut & Verifikasi ({officerSession.jabatan})
                 </h3>
               </div>
               <button
@@ -3536,18 +4010,36 @@ export default function App() {
               </button>
             </div>
 
+            {/* Complaint Summary Box inside Modal */}
+            <div className="mb-4 p-3.5 bg-[#F7F7F7] border border-neutral-200 text-xs space-y-1">
+              <div className="font-extrabold text-neutral-950">{editingItem.title}</div>
+              <p className="text-neutral-600 leading-relaxed">{editingItem.description}</p>
+              <div className="pt-1 text-[11px] text-neutral-500 flex flex-wrap items-center gap-3">
+                <span>
+                  Pelapor: <strong>{editingItem.reporterName}</strong> ({editingItem.nikMasked})
+                </span>
+                <span>•</span>
+                <span>
+                  Status Saat Ini:{' '}
+                  <strong className="text-[#E11D2E]">
+                    {editingItem.status.replace(/_/g, ' ').toUpperCase()}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
             <form onSubmit={handleSaveModalStatus} className="space-y-4">
               <div>
                 <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
-                  Tahapan Status Tindak Lanjut
+                  Tahapan Status Tindak Lanjut *
                 </label>
                 <select
                   value={modalStatus}
                   onChange={(e) => setModalStatus(e.target.value)}
-                  className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-bold text-neutral-900"
+                  className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
                 >
                   <option value="menunggu_verifikasi">
-                    1. Laporan Diterima via Barcode Pos RT
+                    1. Laporan Diterima via Barcode Pos RT / Web
                   </option>
                   <option value="ditinjau_kelurahan">
                     2. Diverifikasi oleh Pegawai Kelurahan Fatululi
@@ -3562,52 +4054,94 @@ export default function App() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
-                  Instansi Tujuan / Koordinasi
-                </label>
-                <select
-                  value={modalAgency}
-                  onChange={(e) => setModalAgency(e.target.value)}
-                  className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-medium text-neutral-900"
-                >
-                  {AGENCY_LIST.map((ag) => (
-                    <option key={ag} value={ag}>
-                      {ag}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
+                    Instansi Tujuan / Koordinasi *
+                  </label>
+                  <select
+                    value={modalAgency}
+                    onChange={(e) => setModalAgency(e.target.value)}
+                    className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-3 text-xs font-medium text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
+                  >
+                    {AGENCY_LIST.map((ag) => (
+                      <option key={ag} value={ag}>
+                        {ag}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
+                    Nomor Surat Pengantar (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modalLetterNo}
+                    onChange={(e) => setModalLetterNo(e.target.value)}
+                    placeholder="Otomatis jika dikosongkan..."
+                    className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-3 text-xs font-mono text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
-                  Catatan Mediasi / Peninjauan Lapangan
+                  Catatan Mediasi / Peninjauan Lapangan *
                 </label>
                 <textarea
                   rows={3}
                   value={modalNotes}
                   onChange={(e) => setModalNotes(e.target.value)}
-                  placeholder="Tuliskan hasil koordinasi bersama Ketua RT/RW atau instansi..."
+                  placeholder="Tuliskan hasil koordinasi bersama Ketua RT/RW atau tindak lanjut ke instansi..."
                   required
-                  className="w-full bg-[#F7F7F7] border border-neutral-300 p-3.5 text-xs text-neutral-900"
+                  className="w-full bg-[#F7F7F7] border border-neutral-300 p-3.5 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
                 />
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2.5">
+              <div className="pt-3 border-t border-neutral-200 flex flex-wrap items-center justify-between gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="px-4 py-2.5 bg-neutral-200 text-neutral-800 font-bold text-xs cursor-pointer"
+                  onClick={() => {
+                    generateOfficialReferralLetterPDF(
+                      {
+                        ...editingItem,
+                        status: modalStatus,
+                        targetAgency: modalAgency,
+                        officialLetterNumber:
+                          modalLetterNo.trim() || editingItem.officialLetterNumber,
+                        adminNotes: modalNotes.trim() || editingItem.adminNotes,
+                      },
+                      officerSession.name,
+                      officerSession.jabatan
+                    );
+                    showToast(
+                      `Surat Pengantar PDF untuk #${editingItem.ticketNumber} berhasil diunduh.`
+                    );
+                  }}
+                  className="px-4 py-2.5 bg-[#262629] hover:bg-neutral-800 text-white font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer"
                 >
-                  Batal
+                  <Printer className="w-3.5 h-3.5 text-[#E11D2E]" />
+                  <span>Cetak Surat PDF</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={savingModal}
-                  className="px-6 py-2.5 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs cursor-pointer"
-                >
-                  {savingModal ? 'Menyimpan...' : 'Simpan & Perbarui Status'}
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(null)}
+                    className="px-4 py-2.5 bg-neutral-200 text-neutral-800 font-bold text-xs cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingModal}
+                    className="px-6 py-2.5 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs cursor-pointer"
+                  >
+                    {savingModal ? 'Menyimpan...' : 'Simpan & Perbarui Status'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
