@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   signInWithPopup,
   signOut,
@@ -14,13 +14,14 @@ import {
   X,
   UserCheck,
   ChevronDown,
+  ChevronUp,
+  ArrowLeft,
+  ArrowRight,
   Home,
   Bell,
   Search,
   FileText,
-  ShieldAlert,
   Clock,
-  MapPin,
   PhoneCall,
   QrCode,
   Send,
@@ -30,10 +31,13 @@ import {
   EyeOff,
   Printer,
   Download,
-  ArrowRight,
-  Building2,
   AlertTriangle,
   RefreshCw,
+  Globe,
+  Mail,
+  Check,
+  ShieldCheck,
+  MapPin,
 } from 'lucide-react';
 import { auth, googleAuthProvider } from './lib/firebase.ts';
 import {
@@ -156,30 +160,30 @@ const CATEGORY_CARDS = [
   {
     id: 'umum_lingkungan',
     title: 'Umum & Lingkungan',
-    desc: 'Batas tanah, limbah ternak, drainase & fasilitas umum',
+    desc: 'Perselisihan batas tanah warga, polusi limbah ternak, drainase tersumbat, serta ketertiban fasilitas umum di lingkungan RT/RW.',
     icon: Users,
-    activeClass: 'border-[#1D4ED8] bg-blue-50/70 text-[#1E40AF]',
+    activeClass: 'border-[#E11D2E] bg-red-50/70 text-neutral-900',
   },
   {
     id: 'khusus_rahasia',
     title: 'Khusus / Rahasia',
-    desc: 'Identitas pelapor disembunyikan penuh dari publik & tetangga',
+    desc: 'Pengaduan sensitif dengan perlindungan penuh: identitas pelapor dan NIK disamarkan secara otomatis dari publik maupun tetangga.',
     icon: EyeOff,
-    activeClass: 'border-amber-500 bg-amber-50/70 text-amber-900',
+    activeClass: 'border-[#E11D2E] bg-red-50/70 text-neutral-900',
   },
   {
     id: 'subsidi_minyak_tanah',
     title: 'Subsidi Minyak Tanah',
-    desc: 'Antrean pangkalan, kelangkaan stok, atau harga di atas HET',
+    desc: 'Pengawasan antrean pangkalan minyak tanah subsidi, kelangkaan stok kuota warga, atau harga jual melebihi HET Pemerintah.',
     icon: Droplets,
-    activeClass: 'border-amber-600 bg-amber-50/80 text-amber-900',
+    activeClass: 'border-[#E11D2E] bg-red-50/70 text-neutral-900',
   },
   {
     id: 'musibah_darurat',
     title: 'Musibah / Darurat',
-    desc: 'Pohon tumbang, banjir, kebakaran & respon cepat lintas instansi',
+    desc: 'Kejadian pohon tumbang, genangan banjir, kebakaran pemukiman, dan penerusan surat darurat ke Polsek, BPBD, atau Damkar.',
     icon: Flame,
-    activeClass: 'border-red-600 bg-red-50/70 text-red-900',
+    activeClass: 'border-[#E11D2E] bg-red-50/70 text-neutral-900',
   },
 ];
 
@@ -187,11 +191,21 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenView>('portal_warga');
   const [citizenTab, setCitizenTab] = useState<CitizenTab>('buat_laporan');
 
+  // Accordion state for Syarat & Ketentuan section
+  const [openAccordion, setOpenAccordion] = useState<number | null>(1);
+  // Active hero feature card highlight index
+  const [heroCardIndex, setHeroCardIndex] = useState<number>(0);
+
+  // Refs for smooth scrolling from Hero / Navbar / Split CTA buttons
+  const workspaceSectionRef = useRef<HTMLDivElement | null>(null);
+  const syaratSectionRef = useRef<HTMLDivElement | null>(null);
+  const perlindunganSectionRef = useRef<HTMLDivElement | null>(null);
+
   // Officer Authentication State (Separates Public Citizen View vs Admin/Lurah Dashboard)
   const [officerSession, setOfficerSession] = useState<ActiveOfficerSession | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
 
-  // Login & Registration Form State (Starts empty so public visitors cannot bypass authentication)
+  // Login & Registration Form State
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
   const [loginNipInput, setLoginNipInput] = useState<string>('');
   const [loginPinInput, setLoginPinInput] = useState<string>('');
@@ -277,6 +291,16 @@ export default function App() {
   const [modalNotes, setModalNotes] = useState<string>('');
   const [savingModal, setSavingModal] = useState<boolean>(false);
   const [toastBanner, setToastBanner] = useState<string | null>(null);
+
+  const scrollToWorkspace = (targetTab?: CitizenTab) => {
+    setActiveScreen('portal_warga');
+    if (targetTab) {
+      setCitizenTab(targetTab);
+    }
+    setTimeout(() => {
+      workspaceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
 
   const loadComplaints = useCallback(async () => {
     setLoading(true);
@@ -509,6 +533,7 @@ export default function App() {
     } else if (complaints.length > 0) {
       showToast('Tiket tidak ditemukan, menampilkan contoh tiket #FTL-2026-042.');
     }
+    scrollToWorkspace('lacak_status');
   };
 
   // Submit Subsidy Form Handler
@@ -759,194 +784,241 @@ export default function App() {
   ).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900">
+    <div className="min-h-screen flex flex-col bg-white text-neutral-900 font-sans">
       {/* =====================================================================
-          HEADER PORTAL PUBLIK WARGA (Modern, Natural & Ringkas)
+          1. STICKY PURE WHITE NAVBAR (Mengikuti Struktur Referensi)
          ===================================================================== */}
       {activeScreen !== 'admin_panel' && (
-        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
+        <header className="sticky top-0 z-40 bg-white border-b border-neutral-200">
+          <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between gap-4">
+            {/* Left Institutional Brand Lockup */}
             <button
               type="button"
               onClick={() => {
                 setActiveScreen('portal_warga');
                 setCitizenTab('buat_laporan');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              title="Home"
-              className="w-10 h-10 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 text-white flex items-center justify-center shadow-xs shrink-0 transition-colors cursor-pointer"
+              className="flex items-center gap-3 text-left group cursor-pointer"
             >
-              <Home className="w-5 h-5" />
-            </button>
-            <div>
-              <span className="font-extrabold text-slate-900 text-base tracking-tight whitespace-nowrap block">
-                Lapor Fatululi
-              </span>
-              <span className="text-[11px] text-slate-500 font-medium">
-                Layanan Pengaduan Kelurahan Fatululi
-              </span>
-            </div>
-          </div>
-
-          {/* Quick Desktop Links + Collapsible Pill Dropdown */}
-          <div className="relative flex items-center gap-3">
-            {activeScreen === 'portal_warga' && (
-              <div className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-full">
-                <button
-                  type="button"
-                  onClick={() => setCitizenTab('buat_laporan')}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                    citizenTab === 'buat_laporan'
-                      ? 'bg-white text-[#1D4ED8] shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Buat Laporan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCitizenTab('lacak_status')}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                    citizenTab === 'lacak_status'
-                      ? 'bg-white text-[#1D4ED8] shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Cek Status Tiket
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCitizenTab('aduan_subsidi')}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                    citizenTab === 'aduan_subsidi'
-                      ? 'bg-white text-amber-700 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Subsidi Minyak Tanah
-                </button>
+              <div className="flex flex-col">
+                <div className="text-2xl sm:text-[26px] font-black tracking-tighter leading-none text-neutral-950 flex items-center">
+                  <span>LAPOR</span>
+                  <span className="text-[#E11D2E] ml-1.5">FTL</span>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
+                  Kelurahan Fatululi • Kota Kupang
+                </span>
               </div>
-            )}
+            </button>
 
-            <div className="relative flex flex-col items-end">
+            {/* Right Navigation Links + Search + Login Officer Trigger */}
+            <div className="flex items-center gap-2 sm:gap-6">
+              <nav className="hidden lg:flex items-center gap-6">
+                <button
+                  type="button"
+                  onClick={() => scrollToWorkspace('buat_laporan')}
+                  className={`text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    activeScreen === 'portal_warga' && citizenTab === 'buat_laporan'
+                      ? 'text-[#E11D2E]'
+                      : 'text-neutral-700 hover:text-[#E11D2E]'
+                  }`}
+                >
+                  <span>Buat Pengaduan</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => scrollToWorkspace('lacak_status')}
+                  className={`text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    activeScreen === 'portal_warga' && citizenTab === 'lacak_status'
+                      ? 'text-[#E11D2E]'
+                      : 'text-neutral-700 hover:text-[#E11D2E]'
+                  }`}
+                >
+                  <span>Lacak Status ({complaints.length})</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => scrollToWorkspace('aduan_subsidi')}
+                  className={`text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    activeScreen === 'portal_warga' && citizenTab === 'aduan_subsidi'
+                      ? 'text-[#E11D2E]'
+                      : 'text-neutral-700 hover:text-[#E11D2E]'
+                  }`}
+                >
+                  <span>Subsidi Minyak</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveScreen('portal_warga');
+                    setTimeout(() => {
+                      syaratSectionRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      });
+                    }, 50);
+                  }}
+                  className="text-xs font-bold uppercase tracking-wider text-neutral-700 hover:text-[#E11D2E] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>Syarat & Pos QR</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveScreen('portal_warga');
+                    setTimeout(() => {
+                      perlindunganSectionRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      });
+                    }, 50);
+                  }}
+                  className="text-xs font-bold uppercase tracking-wider text-neutral-700 hover:text-[#E11D2E] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>Perlindungan</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                </button>
+              </nav>
+
+              {/* Quick Search Icon Trigger */}
               <button
                 type="button"
-                onClick={() => setIsPublicMenuOpen((prev) => !prev)}
-                className="w-fit px-4 py-2 rounded-full bg-[#334155] hover:bg-[#3E4C63] text-white font-semibold text-xs sm:text-sm inline-flex items-center gap-3 shadow-xs transition-all cursor-pointer"
+                onClick={() => scrollToWorkspace('lacak_status')}
+                title="Cari & Lacak Nomor Tiket Pengaduan"
+                className="p-2 text-neutral-800 hover:text-[#E11D2E] transition-colors cursor-pointer"
               >
-                <span>
-                  {activeScreen === 'login_aparat'
-                    ? 'Login Petugas'
-                    : citizenTab === 'lacak_status'
-                    ? 'Cek Status Tiket'
-                    : citizenTab === 'aduan_subsidi'
-                    ? 'Subsidi Minyak'
-                    : 'Pengaduan'}
-                </span>
-                <ChevronDown
-                  className={`w-4 h-4 text-white transition-transform duration-200 ${
-                    isPublicMenuOpen ? 'rotate-180' : ''
-                  }`}
-                />
+                <Search className="w-4 h-4" />
               </button>
 
-              {isPublicMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-30"
-                    onClick={() => setIsPublicMenuOpen(false)}
+              {/* Dropdown Menu / Officer Login Button */}
+              <div className="relative flex flex-col items-end">
+                <button
+                  type="button"
+                  onClick={() => setIsPublicMenuOpen((prev) => !prev)}
+                  className="px-4 py-2 rounded-sm bg-[#1A1A1D] hover:bg-[#E11D2E] text-white font-bold text-xs uppercase tracking-wider inline-flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <span>
+                    {officerSession
+                      ? `Panel ${officerSession.jabatan.split(' ')[0]}`
+                      : activeScreen === 'login_aparat'
+                      ? 'Login Petugas'
+                      : 'Menu / Aparat'}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-white transition-transform duration-200 ${
+                      isPublicMenuOpen ? 'rotate-180' : ''
+                    }`}
                   />
-                  <div className="absolute right-0 top-full mt-2 z-40 flex flex-col items-end gap-1.5 bg-[#111827]/95 p-2.5 rounded-2xl border border-slate-700/80 shadow-xl">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveScreen('portal_warga');
-                        setCitizenTab('buat_laporan');
-                        setIsPublicMenuOpen(false);
-                      }}
-                      className={`w-fit whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                        activeScreen === 'portal_warga' && citizenTab === 'buat_laporan'
-                          ? 'bg-[#1D4ED8] text-white'
-                          : 'bg-[#334155] text-slate-100 hover:bg-[#475569]'
-                      }`}
-                    >
-                      Buat Pengaduan Baru
-                    </button>
+                </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveScreen('portal_warga');
-                        setCitizenTab('lacak_status');
-                        setIsPublicMenuOpen(false);
-                      }}
-                      className={`w-fit whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                        activeScreen === 'portal_warga' && citizenTab === 'lacak_status'
-                          ? 'bg-[#1D4ED8] text-white'
-                          : 'bg-[#334155] text-slate-100 hover:bg-[#475569]'
-                      }`}
-                    >
-                      Pelacakan Status Tiket
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveScreen('portal_warga');
-                        setCitizenTab('aduan_subsidi');
-                        setIsPublicMenuOpen(false);
-                      }}
-                      className={`w-fit whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                        activeScreen === 'portal_warga' && citizenTab === 'aduan_subsidi'
-                          ? 'bg-[#1D4ED8] text-white'
-                          : 'bg-[#334155] text-slate-100 hover:bg-[#475569]'
-                      }`}
-                    >
-                      Aduan Subsidi Minyak
-                    </button>
-
-                    {officerSession ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveScreen('admin_panel');
-                            setIsPublicMenuOpen(false);
-                          }}
-                          className="w-fit whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold bg-[#334155] text-amber-300 hover:bg-[#475569] transition-colors cursor-pointer"
-                        >
-                          Dashboard ({officerSession.jabatan})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsPublicMenuOpen(false);
-                            handleOfficerLogout();
-                          }}
-                          className="w-fit whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold bg-red-950/90 text-red-200 hover:bg-red-900 border border-red-800/70 inline-flex items-center gap-2 transition-colors cursor-pointer"
-                        >
-                          <span>Logout</span>
-                          <LogOut className="w-3.5 h-3.5 text-red-300" />
-                        </button>
-                      </>
-                    ) : (
+                {isPublicMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-30"
+                      onClick={() => setIsPublicMenuOpen(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 z-40 w-56 bg-[#111113] p-2 rounded-sm border border-neutral-800 shadow-2xl flex flex-col gap-1">
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveScreen('login_aparat');
                           setIsPublicMenuOpen(false);
+                          scrollToWorkspace('buat_laporan');
                         }}
-                        className={`w-fit whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                          activeScreen === 'login_aparat'
-                            ? 'bg-[#1D4ED8] text-white'
-                            : 'bg-[#334155] text-slate-100 hover:bg-[#475569]'
+                        className={`w-full text-left px-3.5 py-2.5 text-xs font-bold transition-colors cursor-pointer ${
+                          activeScreen === 'portal_warga' && citizenTab === 'buat_laporan'
+                            ? 'bg-[#E11D2E] text-white'
+                            : 'text-neutral-200 hover:bg-neutral-800'
                         }`}
                       >
-                        Login Pegawai / Lurah
+                        Buat Pengaduan Baru
                       </button>
-                    )}
-                  </div>
-                </>
-              )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPublicMenuOpen(false);
+                          scrollToWorkspace('lacak_status');
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-xs font-bold transition-colors cursor-pointer ${
+                          activeScreen === 'portal_warga' && citizenTab === 'lacak_status'
+                            ? 'bg-[#E11D2E] text-white'
+                            : 'text-neutral-200 hover:bg-neutral-800'
+                        }`}
+                      >
+                        Pelacakan Status Tiket
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPublicMenuOpen(false);
+                          scrollToWorkspace('aduan_subsidi');
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-xs font-bold transition-colors cursor-pointer ${
+                          activeScreen === 'portal_warga' && citizenTab === 'aduan_subsidi'
+                            ? 'bg-[#E11D2E] text-white'
+                            : 'text-neutral-200 hover:bg-neutral-800'
+                        }`}
+                      >
+                        Aduan Subsidi Minyak
+                      </button>
+
+                      <div className="my-1 border-t border-neutral-800" />
+
+                      {officerSession ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveScreen('admin_panel');
+                              setIsPublicMenuOpen(false);
+                            }}
+                            className="w-full text-left px-3.5 py-2.5 text-xs font-bold bg-neutral-800 text-amber-400 hover:bg-neutral-700 transition-colors cursor-pointer"
+                          >
+                            Dashboard ({officerSession.jabatan})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsPublicMenuOpen(false);
+                              handleOfficerLogout();
+                            }}
+                            className="w-full text-left px-3.5 py-2.5 text-xs font-bold bg-red-950/90 text-red-200 hover:bg-red-900 inline-flex items-center justify-between transition-colors cursor-pointer"
+                          >
+                            <span>Logout Aparat</span>
+                            <LogOut className="w-3.5 h-3.5 text-red-300" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveScreen('login_aparat');
+                            setIsPublicMenuOpen(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={`w-full text-left px-3.5 py-2.5 text-xs font-bold transition-colors cursor-pointer ${
+                            activeScreen === 'login_aparat'
+                              ? 'bg-[#E11D2E] text-white'
+                              : 'text-neutral-200 hover:bg-neutral-800'
+                          }`}
+                        >
+                          Login Pegawai / Lurah
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </header>
@@ -954,170 +1026,347 @@ export default function App() {
 
       {/* Global Feedback Toast */}
       {toastBanner && (
-        <div className="fixed bottom-5 right-5 z-50 bg-[#0F172A] text-white px-5 py-3.5 rounded-2xl shadow-lg border border-slate-700 flex items-center gap-3 text-xs font-medium max-w-md">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="fixed bottom-6 right-6 z-50 bg-[#0B0B0C] text-white px-5 py-3.5 rounded-sm shadow-2xl border-l-4 border-[#E11D2E] flex items-center gap-3 text-xs font-semibold max-w-md">
+          <CheckCircle2 className="w-4 h-4 text-[#E11D2E] shrink-0" />
           <span>{toastBanner}</span>
         </div>
       )}
 
       {/* =====================================================================
-          PORTAL UTAMA WARGA (MODERN CIVIC TECH PORTAL)
+          PORTAL UTAMA WARGA (MENGIKUTI TATA LETAK & PALET WARNA REFERENSI)
          ===================================================================== */}
       {activeScreen === 'portal_warga' && (
         <>
-          {/* Modern Civic Hero Banner with Integrated Quick Ticket Tracker */}
-          <section className="bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#1E3A8A] text-white border-b border-slate-800">
-            <div className="max-w-7xl mx-auto px-6 py-8 sm:py-10">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                <div className="lg:col-span-7 space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[11px] font-semibold">
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>Pemerintah Kota Kupang • Kecamatan Oebobo</span>
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
-                    Sistem Layanan Pengaduan & Aspirasi Masyarakat Kelurahan Fatululi
+          {/* =================================================================
+              2. DARK HERO SECTION (Latar Gelap #0B0B0C, Judul Merah, Kotak Aksi Kanan & Kartu Horizontal Bawah)
+             ================================================================= */}
+          <section className="relative bg-[#0B0B0C] text-white overflow-hidden border-b border-neutral-800">
+            {/* Subtle dark architectural overlay */}
+            <div className="
+              absolute inset-0 opacity-20 pointer-events-none
+              bg-[radial-gradient(circle_at_20%_20%,#262629_0%,transparent_55%),radial-gradient(circle_at_80%_70%,#3f1116_0%,transparent_50%)]
+            " />
+
+            <div className="relative max-w-7xl mx-auto px-6 pt-10 pb-14">
+              {/* Top Breadcrumb Navigation */}
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold mb-6">
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="text-[#E11D2E] hover:opacity-80 inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Home className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-neutral-500">|</span>
+                <span className="text-neutral-200">Layanan</span>
+                <span className="text-neutral-500">|</span>
+                <span className="text-[#E11D2E]">
+                  Sistem Layanan Pengaduan & Aspirasi Masyarakat Kelurahan Fatululi
+                </span>
+              </div>
+
+              {/* Hero Main 2-Column Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+                {/* Left Column: Main Heading with Red Highlighted Keywords & Concise Description */}
+                <div className="lg:col-span-7 space-y-5">
+                  <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-[1.12]">
+                    <span>Sekilas Layanan </span>
+                    <span className="text-[#E11D2E]">Pengaduan Masyarakat</span>
                   </h1>
-                  <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                    Sampaikan laporan lingkungan, ketertiban umum, kendala distribusi minyak tanah
-                    subsidi, maupun kondisi darurat secara transparan dan terintegrasi langsung
-                    dengan RT/RW setempat.
+
+                  <p className="text-sm sm:text-base text-neutral-200 leading-relaxed max-w-2xl font-normal">
+                    Pemerintah Kelurahan Fatululi (Kecamatan Oebobo, Kota Kupang) membuka layanan
+                    publik bagi masyarakat yang ingin melaporkan permasalahan lingkungan, ketertiban
+                    umum, distribusi minyak tanah subsidi, maupun kondisi darurat secara transparan
+                    dan terintegrasi langsung dengan RT/RW setempat, yaitu:
                   </p>
 
-                  {/* Live Transparency Counters */}
-                  <div className="pt-2 flex flex-wrap items-center gap-6">
+                  {/* Live Transparency Counters Bar */}
+                  <div className="pt-2 flex flex-wrap items-center gap-6 text-xs">
                     <div>
-                      <div className="text-lg sm:text-xl font-extrabold text-white tabular-nums">
+                      <span className="text-2xl font-black text-white tabular-nums block">
                         {Math.max(48, complaints.length + 44)}
-                      </div>
-                      <div className="text-[11px] text-slate-400">Laporan Teregistrasi</div>
+                      </span>
+                      <span className="text-neutral-400">Laporan Teregistrasi</span>
                     </div>
-                    <div className="h-7 w-px bg-slate-700" />
+                    <div className="h-8 w-px bg-neutral-700" />
                     <div>
-                      <div className="text-lg sm:text-xl font-extrabold text-amber-400 tabular-nums">
+                      <span className="text-2xl font-black text-[#E11D2E] tabular-nums block">
                         {Math.max(3, countInProgress)}
-                      </div>
-                      <div className="text-[11px] text-slate-400">Sedang Ditindaklanjuti</div>
+                      </span>
+                      <span className="text-neutral-400">Sedang Ditindaklanjuti</span>
                     </div>
-                    <div className="h-7 w-px bg-slate-700" />
+                    <div className="h-8 w-px bg-neutral-700" />
                     <div>
-                      <div className="text-lg sm:text-xl font-extrabold text-emerald-400 tabular-nums">
+                      <span className="text-2xl font-black text-white tabular-nums block">
                         {Math.max(36, countResolved + 35)}
-                      </div>
-                      <div className="text-[11px] text-slate-400">Selesai & Diarsipkan</div>
+                      </span>
+                      <span className="text-neutral-400">Selesai & Diarsipkan</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Quick Ticket Lookup Box inside Hero */}
-                <div className="lg:col-span-5">
-                  <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl p-5">
-                    <div className="text-xs font-bold text-white flex items-center justify-between">
-                      <span>Lacak Cepat Progres Laporan</span>
-                      <span className="text-[11px] font-normal text-slate-300">
-                        Nomor Tiket / NIK
-                      </span>
+                {/* Right Column: Thin-Bordered Quick Info & Action Box ("Create Report From:" style) */}
+                <div className="lg:col-span-5 flex lg:justify-end">
+                  <div className="w-full max-w-md border border-neutral-500/80 bg-[#121214]/90 p-6 sm:p-7">
+                    <h2 className="text-base font-extrabold text-white tracking-tight mb-5">
+                      Saluran Resmi & Lacak Tiket:
+                    </h2>
+
+                    <div className="space-y-3.5 text-xs sm:text-sm">
+                      <div className="flex items-center gap-3">
+                        <Globe className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                        <button
+                          type="button"
+                          onClick={() => scrollToWorkspace('buat_laporan')}
+                          className="text-[#E11D2E] hover:underline font-medium text-left truncate cursor-pointer"
+                        >
+                          https://lapor-fatululi.vercel.app/
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <PhoneCall className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                        <span className="text-white font-bold">
+                          (0380) 821xxx (Posko Trantib Fatululi)
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Mail className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                        <span className="text-neutral-400">
+                          pengaduan@fatululi.kupangkota.go.id
+                        </span>
+                      </div>
                     </div>
-                    <form onSubmit={handleSearchTicket} className="mt-3 flex gap-2">
-                      <div className="relative flex-1">
-                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+
+                    {/* Integrated Quick Ticket Lookup inside the Right Hero Box */}
+                    <div className="mt-5 pt-5 border-t border-neutral-800">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-300 mb-2">
+                        Lacak Cepat Nomor Tiket / NIK
+                      </label>
+                      <form onSubmit={handleSearchTicket} className="flex gap-2">
                         <input
                           type="text"
                           value={searchInput}
                           onChange={(e) => setSearchInput(e.target.value)}
-                          placeholder="Contoh: FTL-2026-042 atau 16 digit NIK"
-                          className="w-full bg-white text-slate-900 rounded-xl pl-10 pr-3.5 py-2.5 text-xs font-semibold placeholder:text-slate-400 focus:outline-none"
+                          placeholder="FTL-2026-042 atau 16 digit NIK"
+                          className="flex-1 bg-[#1F1F23] border border-neutral-700 text-white px-3.5 py-2.5 text-xs font-semibold placeholder:text-neutral-500 focus:outline-none focus:border-[#E11D2E]"
                         />
-                      </div>
-                      <button
-                        type="submit"
-                        className="px-4 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-amber-400 text-slate-950 font-extrabold text-xs shrink-0 transition-colors cursor-pointer"
-                      >
-                        Cek Status
-                      </button>
-                    </form>
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-300">
-                      <span>Tiket terbaru:</span>
-                      {complaints.slice(0, 4).map((c) => (
                         <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => {
-                            setTrackedComplaint(c);
-                            setSearchInput(c.ticketNumber);
-                            setCitizenTab('lacak_status');
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] transition-colors cursor-pointer"
+                          type="submit"
+                          className="px-4 py-2.5 bg-[#E11D2E] hover:bg-red-700 text-white font-bold text-xs shrink-0 transition-colors cursor-pointer"
                         >
-                          #{c.ticketNumber.replace('FTL-2026-', 'FTL-')}
+                          Cek Status
                         </button>
-                      ))}
+                      </form>
+
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-400">
+                        <span>Tiket terbaru:</span>
+                        {complaints.slice(0, 4).map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setTrackedComplaint(c);
+                              setSearchInput(c.ticketNumber);
+                              scrollToWorkspace('lacak_status');
+                            }}
+                            className="px-2 py-0.5 bg-neutral-800 hover:bg-[#E11D2E] text-neutral-200 hover:text-white font-mono text-[10px] transition-colors cursor-pointer"
+                          >
+                            #{c.ticketNumber.replace('FTL-2026-', 'FTL-')}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Circular Dark/Red Navigation Arrow Buttons above Horizontal Cards */}
+              <div className="mt-8 mb-5 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHeroCardIndex((prev) =>
+                      prev === 0 ? CATEGORY_CARDS.length - 1 : prev - 1
+                    )
+                  }
+                  title="Kategori Sebelumnya"
+                  className="w-10 h-10 rounded-full bg-[#1C1C1F] hover:bg-[#262629] border border-neutral-700 text-[#E11D2E] flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHeroCardIndex((prev) => (prev + 1) % CATEGORY_CARDS.length)
+                  }
+                  title="Kategori Berikutnya"
+                  className="w-10 h-10 rounded-full bg-[#1C1C1F] hover:bg-[#262629] border border-neutral-700 text-[#E11D2E] flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <span className="text-xs text-neutral-400 ml-1">
+                  Klik kartu kategori di bawah untuk langsung mengisi laporan:
+                </span>
+              </div>
+
+              {/* Bottom Hero Horizontal Row of Dark Charcoal Cards (#262629) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {CATEGORY_CARDS.map((card, idx) => {
+                  const isHighlighted = heroCardIndex === idx || formCategory === card.id;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => {
+                        setHeroCardIndex(idx);
+                        if (card.id === 'subsidi_minyak_tanah') {
+                          scrollToWorkspace('aduan_subsidi');
+                        } else {
+                          setFormCategory(card.id);
+                          scrollToWorkspace('buat_laporan');
+                        }
+                      }}
+                      className={`text-left bg-[#262629] hover:bg-[#2E2E32] p-6 transition-all cursor-pointer flex flex-col justify-between border-t-2 ${
+                        isHighlighted ? 'border-[#E11D2E]' : 'border-transparent'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <span className="text-sm font-extrabold text-white">
+                            {card.title}
+                          </span>
+                          <span className="text-[11px] font-bold text-[#E11D2E]">
+                            0{idx + 1}
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-300 leading-relaxed font-normal">
+                          {card.desc}
+                        </p>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-neutral-700/60 flex items-center justify-between text-[11px] font-bold text-[#E11D2E]">
+                        <span>Pilih & Buat Laporan</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </section>
 
-          {/* Main 12-Column Citizen Workspace */}
-          <main className="max-w-7xl w-full mx-auto px-6 py-8">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* LEFT 7 COLUMNS: Interactive Tabbed Workspace */}
-              <div className="lg:col-span-7 space-y-6">
-                {/* Modern Segmented Control Bar */}
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-1.5 grid grid-cols-3 gap-1.5 shadow-2xs">
+          {/* =================================================================
+              3. BAGIAN KONTEN UTAMA 1 (PUTIH BERSIH):
+                 Daftar Poin Berikon Aksen Merah + Ruang Kerja Interaktif 3 Tab
+             ================================================================= */}
+          <section ref={workspaceSectionRef} className="bg-white py-14 border-b border-neutral-200">
+            <div className="max-w-7xl mx-auto px-6">
+              {/* Top Reference Note Line */}
+              <p className="text-xs sm:text-sm text-neutral-700 mb-6">
+                Untuk informasi lebih lanjut mengenai tata cara dan pelacakan laporan Pengaduan
+                Masyarakat, kunjungi{' '}
+                <button
+                  type="button"
+                  onClick={() => scrollToWorkspace('lacak_status')}
+                  className="text-[#E11D2E] font-bold hover:underline cursor-pointer"
+                >
+                  Cek Status Tiket Fatululi
+                </button>
+              </p>
+
+              {/* Section Title with Red Highlighted Keywords */}
+              <h2 className="text-2xl sm:text-4xl font-normal tracking-tight text-neutral-900">
+                <span>Jenis </span>
+                <span className="text-[#E11D2E]">Pengaduan Masyarakat</span>
+                <span> yang Ditangani Kelurahan Fatululi</span>
+              </h2>
+
+              {/* Bullet Points with Red Circular Checkmark Icons */}
+              <div className="mt-6 space-y-3.5 max-w-5xl">
+                <div className="flex items-start gap-3.5">
+                  <span className="w-5 h-5 rounded-full bg-[#E11D2E] text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  </span>
+                  <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
+                    Melibatkan permasalahan ketertiban umum, batas tanah, kebersihan lingkungan,
+                    atau fasilitas warga di wilayah RT/RW Kelurahan Fatululi yang memerlukan mediasi
+                    aparat kelurahan maupun penerusan surat pengantar resmi ke Polsek Oebobo, BPBD,
+                    dan Damkar; dan/atau
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3.5">
+                  <span className="w-5 h-5 rounded-full bg-[#E11D2E] text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  </span>
+                  <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
+                    Menyangkut pengawasan distribusi minyak tanah bersubsidi pada pangkalan resmi
+                    di Kelurahan Fatululi (kelangkaan stok, pembagian kuota RT, atau harga jual di
+                    atas Harga Eceran Tertinggi / HET) serta laporan kategori Khusus/Rahasia dengan
+                    jaminan perlindungan identitas pelapor (NIK 16 digit KTP Kota Kupang).
+                  </p>
+                </div>
+              </div>
+
+              {/* =============================================================
+                  INTERACTIVE CITIZEN WORKSPACE (3 TABS: BUAT PENGADUAN, LACAK STATUS, SUBSIDI MINYAK)
+                 ============================================================= */}
+              <div className="mt-10">
+                {/* Clean Institutional Tab Switcher Bar */}
+                <div className="bg-[#EEEEEE] p-1.5 grid grid-cols-1 sm:grid-cols-3 gap-1.5 border border-neutral-300">
                   <button
                     type="button"
                     onClick={() => setCitizenTab('buat_laporan')}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    className={`py-3 px-4 text-xs sm:text-sm font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       citizenTab === 'buat_laporan'
-                        ? 'bg-[#1D4ED8] text-white shadow-xs'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        ? 'bg-[#E11D2E] text-white shadow-xs'
+                        : 'bg-white text-neutral-800 hover:bg-neutral-100'
                     }`}
                   >
-                    <Send className="w-3.5 h-3.5 shrink-0" />
+                    <Send className="w-4 h-4 shrink-0" />
                     <span>Buat Pengaduan</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setCitizenTab('lacak_status')}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    className={`py-3 px-4 text-xs sm:text-sm font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       citizenTab === 'lacak_status'
-                        ? 'bg-[#1D4ED8] text-white shadow-xs'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        ? 'bg-[#E11D2E] text-white shadow-xs'
+                        : 'bg-white text-neutral-800 hover:bg-neutral-100'
                     }`}
                   >
-                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <Clock className="w-4 h-4 shrink-0" />
                     <span>Lacak Status ({complaints.length})</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setCitizenTab('aduan_subsidi')}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    className={`py-3 px-4 text-xs sm:text-sm font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       citizenTab === 'aduan_subsidi'
-                        ? 'bg-[#D97706] text-white shadow-xs'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        ? 'bg-[#E11D2E] text-white shadow-xs'
+                        : 'bg-white text-neutral-800 hover:bg-neutral-100'
                     }`}
                   >
-                    <Droplets className="w-3.5 h-3.5 shrink-0" />
+                    <Droplets className="w-4 h-4 shrink-0" />
                     <span>Subsidi Minyak</span>
                   </button>
                 </div>
 
-                {/* =========================================================
-                    TAB 1: FORM PENGADUAN MASYARAKAT MODERN
-                   ========================================================= */}
+                {/* TAB 1: FORMULIR PENGADUAN MASYARAKAT */}
                 {citizenTab === 'buat_laporan' && (
-                  <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-2xs">
-                    <div className="flex flex-wrap items-center justify-between gap-3 pb-5 mb-6 border-b border-slate-100">
+                  <div className="bg-white border border-t-0 border-neutral-300 p-6 sm:p-10 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-5 mb-6 border-b border-neutral-200">
                       <div>
-                        <span className="text-[11px] font-extrabold text-[#1D4ED8] uppercase tracking-wider">
+                        <span className="text-[11px] font-extrabold text-[#E11D2E] uppercase tracking-widest">
                           Formulir Pengaduan Warga
                         </span>
-                        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 mt-0.5">
+                        <h3 className="text-xl sm:text-2xl font-extrabold text-neutral-950 mt-0.5">
                           Sampaikan Laporan Baru
-                        </h2>
+                        </h3>
                       </div>
                       <button
                         type="button"
@@ -1133,24 +1382,24 @@ export default function App() {
                             'Darurat: Pohon tumbang dan genangan banjir di sekitar Pos RT 003 / RW 001 membutuhkan penanganan segera BPBD / Damkar.'
                           );
                         }}
-                        className="px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className="px-4 py-2 bg-red-50 hover:bg-red-100 border border-[#E11D2E]/40 text-[#E11D2E] font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                        <AlertTriangle className="w-3.5 h-3.5 text-[#E11D2E]" />
                         <span>Isi Cepat Laporan Darurat</span>
                       </button>
                     </div>
 
                     {generalFeedback && (
                       <div
-                        className={`mb-6 p-4 rounded-2xl border text-xs font-medium flex items-center justify-between gap-3 ${
+                        className={`mb-6 p-4 border-l-4 text-xs font-medium flex items-center justify-between gap-3 ${
                           generalFeedback.type === 'success'
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                            : 'bg-red-50 border-red-200 text-red-900'
+                            ? 'bg-neutral-100 border-emerald-600 text-neutral-900'
+                            : 'bg-red-50 border-[#E11D2E] text-red-950'
                         }`}
                       >
                         <div>
                           <p className="font-bold">{generalFeedback.text}</p>
-                          <p className="text-[11px] mt-0.5 opacity-80">
+                          <p className="text-[11px] mt-0.5 text-neutral-600">
                             Data laporan telah tersimpan ke database PostgreSQL Kelurahan Fatululi.
                           </p>
                         </div>
@@ -1161,7 +1410,7 @@ export default function App() {
                               setSearchInput(generalFeedback.ticket || '');
                               setCitizenTab('lacak_status');
                             }}
-                            className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-bold text-xs shrink-0 cursor-pointer"
+                            className="px-4 py-2 bg-[#E11D2E] hover:bg-red-700 text-white font-bold text-xs shrink-0 cursor-pointer"
                           >
                             Lihat Status
                           </button>
@@ -1169,13 +1418,13 @@ export default function App() {
                       </div>
                     )}
 
-                    <form onSubmit={handleGeneralSubmit} className="space-y-5">
+                    <form onSubmit={handleGeneralSubmit} className="space-y-6">
                       {/* Interactive 4 Category Cards */}
                       <div>
-                        <label className="block text-xs font-extrabold text-slate-800 mb-2.5">
+                        <label className="block text-xs font-extrabold text-neutral-900 uppercase tracking-wider mb-3">
                           Pilih Kategori Pengaduan *
                         </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                           {CATEGORY_CARDS.map((cat) => {
                             const Icon = cat.icon;
                             const isSelected = formCategory === cat.id;
@@ -1184,26 +1433,30 @@ export default function App() {
                                 key={cat.id}
                                 type="button"
                                 onClick={() => setFormCategory(cat.id)}
-                                className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                                className={`text-left p-4 border transition-all cursor-pointer flex flex-col justify-between ${
                                   isSelected
-                                    ? `${cat.activeClass} border-2 shadow-2xs`
-                                    : 'border-slate-200 bg-[#F8FAFC] hover:border-slate-300 text-slate-700'
+                                    ? 'bg-[#262629] text-white border-[#E11D2E] border-t-4 shadow-sm'
+                                    : 'border-neutral-300 bg-[#F7F7F7] hover:border-neutral-400 text-neutral-800'
                                 }`}
                               >
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                  <span className="text-xs font-extrabold">{cat.title}</span>
+                                  <div
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                                      isSelected
+                                        ? 'bg-[#E11D2E] text-white'
+                                        : 'bg-white border border-neutral-300 text-[#E11D2E]'
+                                    }`}
+                                  >
+                                    <Icon className="w-3.5 h-3.5" />
+                                  </div>
+                                </div>
                                 <div
-                                  className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                                    isSelected
-                                      ? 'bg-white shadow-2xs'
-                                      : 'bg-white border border-slate-200 text-slate-500'
+                                  className={`text-[11px] leading-snug ${
+                                    isSelected ? 'text-neutral-300' : 'text-neutral-600'
                                   }`}
                                 >
-                                  <Icon className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <div className="text-xs font-extrabold">{cat.title}</div>
-                                  <div className="text-[11px] opacity-80 mt-0.5 leading-snug">
-                                    {cat.desc}
-                                  </div>
+                                  {cat.desc}
                                 </div>
                               </button>
                             );
@@ -1214,13 +1467,13 @@ export default function App() {
                       {/* 16-Digit NIK Field with Live Counter */}
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-extrabold text-slate-800">
+                          <label className="text-xs font-extrabold text-neutral-900">
                             NIK KTP Warga Fatululi (16 Digit) *
                           </label>
                           <div className="flex items-center gap-3">
                             <span
                               className={`text-[11px] font-mono font-bold ${
-                                formNik.length === 16 ? 'text-emerald-600' : 'text-slate-400'
+                                formNik.length === 16 ? 'text-emerald-700' : 'text-neutral-500'
                               }`}
                             >
                               {formNik.length}/16 digit
@@ -1232,7 +1485,7 @@ export default function App() {
                                 if (!formName) setFormName('Kornelis Ndun');
                                 if (!formPhone) setFormPhone('085239110445');
                               }}
-                              className="text-[11px] font-bold text-[#1D4ED8] hover:underline cursor-pointer"
+                              className="text-[11px] font-bold text-[#E11D2E] hover:underline cursor-pointer"
                             >
                               Contoh NIK
                             </button>
@@ -1246,14 +1499,14 @@ export default function App() {
                           onChange={(e) => setFormNik(e.target.value.replace(/\D/g, '').slice(0, 16))}
                           placeholder="Masukkan 16 digit NIK KTP Kota Kupang (537104...)"
                           required
-                          className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white transition-colors"
+                          className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white transition-colors"
                         />
                       </div>
 
                       {/* Name & Phone */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                             Nama Lengkap Pelapor *
                           </label>
                           <input
@@ -1262,11 +1515,11 @@ export default function App() {
                             onChange={(e) => setFormName(e.target.value)}
                             placeholder="Sesuai KTP (Disamarkan jika Rahasia)"
                             required
-                            className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                             Nomor HP / WhatsApp Aktif *
                           </label>
                           <input
@@ -1275,15 +1528,15 @@ export default function App() {
                             onChange={(e) => setFormPhone(e.target.value)}
                             placeholder="0812xxxxxxxx"
                             required
-                            className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-mono text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                           />
                         </div>
                       </div>
 
                       {/* RT / RW & Title */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div>
-                          <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                             Nomor RT *
                           </label>
                           <input
@@ -1293,11 +1546,11 @@ export default function App() {
                             onChange={(e) => setFormRt(e.target.value.replace(/\D/g, ''))}
                             placeholder="012"
                             required
-                            className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8]"
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-3 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                             Nomor RW *
                           </label>
                           <input
@@ -1307,11 +1560,11 @@ export default function App() {
                             onChange={(e) => setFormRw(e.target.value.replace(/\D/g, ''))}
                             placeholder="004"
                             required
-                            className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8]"
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-3 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                             Judul / Pokok Laporan *
                           </label>
                           <input
@@ -1320,14 +1573,14 @@ export default function App() {
                             onChange={(e) => setFormTitle(e.target.value)}
                             placeholder="Ringkasan masalah di lokasi..."
                             required
-                            className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                           />
                         </div>
                       </div>
 
                       {/* Chronology */}
                       <div>
-                        <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                        <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                           Rincian Kronologi & Patokan Lokasi *
                         </label>
                         <textarea
@@ -1336,14 +1589,14 @@ export default function App() {
                           onChange={(e) => setFormDesc(e.target.value)}
                           placeholder="Jelaskan permasalahan secara singkat dan jelas untuk memudahkan peninjauan petugas..."
                           required
-                          className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl p-3.5 text-xs text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                          className="w-full bg-[#F7F7F7] border border-neutral-300 p-3.5 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                         />
                       </div>
 
                       {/* Upload & Submit Row */}
-                      <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100">
-                        <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors">
-                          <Upload className="w-4 h-4 text-[#1D4ED8]" />
+                      <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-neutral-200">
+                        <label className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#EEEEEE] hover:bg-neutral-300 text-neutral-900 font-bold text-xs cursor-pointer transition-colors">
+                          <Upload className="w-4 h-4 text-[#E11D2E]" />
                           <span>
                             {formPhoto ? 'Bukti Foto Terlampir' : 'Lampirkan Foto Lapangan'}
                           </span>
@@ -1358,7 +1611,7 @@ export default function App() {
                         <button
                           type="submit"
                           disabled={submittingGeneral}
-                          className="px-6 py-3 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 disabled:opacity-50 text-white font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
+                          className="px-7 py-3.5 bg-[#E11D2E] hover:bg-red-700 disabled:opacity-50 text-white font-extrabold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
                         >
                           <Send className="w-4 h-4" />
                           <span>
@@ -1370,52 +1623,50 @@ export default function App() {
                   </div>
                 )}
 
-                {/* =========================================================
-                    TAB 2: PELACAKAN STATUS TIKET TRANSPARAN
-                   ========================================================= */}
+                {/* TAB 2: PELACAKAN STATUS TIKET TRANSPARAN */}
                 {citizenTab === 'lacak_status' && (
-                  <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-2xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-5 border-b border-slate-100">
+                  <div className="bg-white border border-t-0 border-neutral-300 p-6 sm:p-10 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-5 border-b border-neutral-200">
                       <div>
-                        <span className="text-[11px] font-extrabold text-[#1D4ED8] uppercase tracking-wider">
+                        <span className="text-[11px] font-extrabold text-[#E11D2E] uppercase tracking-widest">
                           Transparansi Tindak Lanjut
                         </span>
-                        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 mt-0.5">
+                        <h3 className="text-xl sm:text-2xl font-extrabold text-neutral-950 mt-0.5">
                           Status Perkembangan Pengaduan
-                        </h2>
+                        </h3>
                       </div>
                       <button
                         type="button"
                         onClick={loadComplaints}
-                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className="px-3.5 py-2 bg-[#EEEEEE] hover:bg-neutral-300 text-neutral-800 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                        <span>Perbarui</span>
+                        <span>Perbarui Data</span>
                       </button>
                     </div>
 
                     {/* Search Form */}
                     <form
                       onSubmit={handleSearchTicket}
-                      className="mt-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+                      className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
                     >
                       <input
                         type="text"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         placeholder="Masukkan Nomor Tiket (contoh: FTL-2026-042) atau 16 digit NIK..."
-                        className="flex-1 bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8]"
+                        className="flex-1 bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs sm:text-sm font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                       />
                       <button
                         type="submit"
-                        className="bg-[#1D4ED8] hover:bg-blue-800 text-white font-bold text-xs sm:text-sm px-6 py-3 rounded-xl transition-colors shrink-0 cursor-pointer"
+                        className="bg-[#E11D2E] hover:bg-red-700 text-white font-bold text-xs sm:text-sm px-7 py-3 transition-colors shrink-0 cursor-pointer"
                       >
                         Cari Tiket
                       </button>
                     </form>
 
                     {/* Ticket Selector Pills */}
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                    <div className="mt-3.5 flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-600">
                       <span>Pilih tiket terdaftar:</span>
                       {complaints.slice(0, 6).map((c) => (
                         <button
@@ -1425,10 +1676,10 @@ export default function App() {
                             setTrackedComplaint(c);
                             setSearchInput(c.ticketNumber);
                           }}
-                          className={`px-2.5 py-1 rounded-full font-mono font-bold transition-colors cursor-pointer ${
+                          className={`px-3 py-1 font-mono font-bold transition-colors cursor-pointer ${
                             activeTracked?.id === c.id
-                              ? 'bg-[#1D4ED8] text-white'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              ? 'bg-[#E11D2E] text-white'
+                              : 'bg-[#EEEEEE] text-neutral-800 hover:bg-neutral-300'
                           }`}
                         >
                           #{c.ticketNumber.replace('FTL-2026-', 'FTL-')}
@@ -1438,9 +1689,9 @@ export default function App() {
 
                     {/* Active Ticket Summary Box */}
                     {activeTracked && (
-                      <div className="mt-6 bg-[#F0F7FF] border border-[#BFDBFE] rounded-2xl p-5">
+                      <div className="mt-6 bg-[#262629] text-white border-l-4 border-[#E11D2E] p-6">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-[11px] font-extrabold text-[#1D4ED8] uppercase tracking-wide">
+                          <span className="text-[11px] font-extrabold text-[#E11D2E] uppercase tracking-wider">
                             {activeTracked.isConfidential ||
                             activeTracked.category === 'khusus_rahasia'
                               ? 'Kategori Khusus / Rahasia (Privasi Pelapor Dilindungi)'
@@ -1450,14 +1701,14 @@ export default function App() {
                               ? 'Kategori Musibah / Darurat Prioritas'
                               : 'Kategori Umum / Lingkungan & Mediasi'}
                           </span>
-                          <span className="px-2.5 py-0.5 rounded-full bg-white border border-blue-200 text-[#1E40AF] font-mono text-[11px] font-extrabold">
+                          <span className="px-3 py-1 bg-[#E11D2E] text-white font-mono text-xs font-extrabold">
                             #{activeTracked.ticketNumber}
                           </span>
                         </div>
-                        <h3 className="text-sm sm:text-base font-extrabold text-slate-900 mt-2">
+                        <h4 className="text-base sm:text-lg font-extrabold text-white mt-2">
                           {activeTracked.title}
-                        </h3>
-                        <p className="text-xs text-slate-600 mt-1">
+                        </h4>
+                        <p className="text-xs text-neutral-300 mt-1">
                           Wilayah: RT {activeTracked.rtNumber} / RW {activeTracked.rwNumber} Kel.
                           Fatululi • Pelapor: {activeTracked.reporterName} (
                           {activeTracked.nikMasked})
@@ -1466,20 +1717,20 @@ export default function App() {
                     )}
 
                     {/* 4-Stage Progress Timeline */}
-                    <div className="mt-7 pl-2 space-y-0">
+                    <div className="mt-8 pl-2 space-y-0">
                       {/* Step 1 */}
                       <div className="flex items-start gap-4">
                         <div className="flex flex-col items-center">
-                          <div className="w-7 h-7 rounded-full bg-[#16A34A] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-[#E11D2E] text-white font-bold text-xs flex items-center justify-center shrink-0">
                             1
                           </div>
-                          <div className="w-0.5 h-14 bg-[#16A34A]" />
+                          <div className="w-0.5 h-14 bg-[#E11D2E]" />
                         </div>
                         <div className="pb-5">
-                          <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          <h5 className="text-xs sm:text-sm font-extrabold text-neutral-900">
                             Laporan Diterima Sistem & Pos RT {activeTracked?.rtNumber || '012'}
-                          </h4>
-                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                          </h5>
+                          <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
                             Data laporan teregistrasi di database Kelurahan Fatululi dengan nomor
                             tiket #{activeTracked?.ticketNumber}.
                           </p>
@@ -1492,23 +1743,23 @@ export default function App() {
                           <div
                             className={`w-7 h-7 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${
                               activeStepIdx >= 2
-                                ? 'bg-[#16A34A] text-white'
-                                : 'bg-slate-200 text-slate-600'
+                                ? 'bg-[#E11D2E] text-white'
+                                : 'bg-neutral-200 text-neutral-600'
                             }`}
                           >
                             2
                           </div>
                           <div
                             className={`w-0.5 h-14 ${
-                              activeStepIdx >= 3 ? 'bg-[#F59E0B]' : 'bg-slate-200'
+                              activeStepIdx >= 3 ? 'bg-[#E11D2E]' : 'bg-neutral-200'
                             }`}
                           />
                         </div>
                         <div className="pb-5">
-                          <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          <h5 className="text-xs sm:text-sm font-extrabold text-neutral-900">
                             Verifikasi Administrasi & NIK Warga Fatululi
-                          </h4>
-                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                          </h5>
+                          <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
                             Kasi Trantib memeriksa keabsahan laporan dan meneruskan koordinasi ke
                             Ketua RT {activeTracked?.rtNumber || '012'}.
                           </p>
@@ -1521,25 +1772,25 @@ export default function App() {
                           <div
                             className={`w-7 h-7 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 ${
                               activeStepIdx === 3
-                                ? 'bg-[#F59E0B] text-slate-950'
+                                ? 'bg-[#262629] text-white ring-2 ring-[#E11D2E]'
                                 : activeStepIdx > 3
-                                ? 'bg-[#16A34A] text-white'
-                                : 'bg-slate-200 text-slate-500'
+                                ? 'bg-[#E11D2E] text-white'
+                                : 'bg-neutral-200 text-neutral-500'
                             }`}
                           >
                             3
                           </div>
-                          <div className="h-14 border-l-2 border-dashed border-slate-300" />
+                          <div className="h-14 border-l-2 border-dashed border-neutral-300" />
                         </div>
                         <div className="pb-5">
-                          <h4
+                          <h5
                             className={`text-xs sm:text-sm font-extrabold ${
-                              activeStepIdx === 3 ? 'text-[#B45309]' : 'text-slate-900'
+                              activeStepIdx === 3 ? 'text-[#E11D2E]' : 'text-neutral-900'
                             }`}
                           >
                             Koordinasi RT/RW & Mediasi Lapangan
-                          </h4>
-                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                          </h5>
+                          <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
                             {activeTracked?.adminNotes ||
                               `Petugas Kelurahan bersama Ketua RT ${
                                 activeTracked?.rtNumber || '012'
@@ -1554,22 +1805,22 @@ export default function App() {
                           <div
                             className={`w-7 h-7 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${
                               activeStepIdx >= 4
-                                ? 'bg-[#16A34A] text-white'
-                                : 'bg-slate-200 text-slate-500'
+                                ? 'bg-[#E11D2E] text-white'
+                                : 'bg-neutral-200 text-neutral-500'
                             }`}
                           >
                             4
                           </div>
                         </div>
                         <div>
-                          <h4
+                          <h5
                             className={`text-xs sm:text-sm font-extrabold ${
-                              activeStepIdx >= 4 ? 'text-emerald-800' : 'text-slate-400'
+                              activeStepIdx >= 4 ? 'text-neutral-950' : 'text-neutral-400'
                             }`}
                           >
                             Penyelesaian & Penerbitan Surat Pengantar Instansi
-                          </h4>
-                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                          </h5>
+                          <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
                             {activeStepIdx >= 4
                               ? `Tindak lanjut selesai. Surat Resmi Nomor ${
                                   activeTracked?.officialLetterNumber ||
@@ -1583,30 +1834,28 @@ export default function App() {
                   </div>
                 )}
 
-                {/* =========================================================
-                    TAB 3: KANAL KHUSUS ADUAN DISTRIBUSI SUBSIDI MINYAK TANAH
-                   ========================================================= */}
+                {/* TAB 3: KANAL KHUSUS ADUAN DISTRIBUSI SUBSIDI MINYAK TANAH */}
                 {citizenTab === 'aduan_subsidi' && (
-                  <div className="bg-[#FFFDF5] border-2 border-[#FDE68A] rounded-3xl p-6 sm:p-8 shadow-2xs">
-                    <div className="inline-flex items-center gap-2 bg-[#F59E0B] text-white text-[11px] font-extrabold px-3.5 py-1.5 rounded-full uppercase tracking-wide">
-                      <Droplets className="w-3.5 h-3.5" />
+                  <div className="bg-white border border-t-0 border-neutral-300 p-6 sm:p-10 shadow-sm">
+                    <div className="inline-flex items-center gap-2 bg-[#262629] text-white text-[11px] font-extrabold px-3.5 py-1.5 uppercase tracking-wider">
+                      <Droplets className="w-3.5 h-3.5 text-[#E11D2E]" />
                       <span>Kanal Pengawasan Subsidi Warga</span>
                     </div>
 
-                    <h2 className="text-xl font-extrabold text-[#78350F] mt-4">
+                    <h3 className="text-xl sm:text-2xl font-extrabold text-neutral-950 mt-4">
                       Aduan Distribusi Minyak Tanah & Bantuan Sosial
-                    </h2>
-                    <p className="text-xs text-[#B45309] leading-relaxed mt-1.5">
+                    </h3>
+                    <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed mt-1.5">
                       Laporkan kelangkaan stok, harga jual melebihi HET, atau kendala pembagian
                       kuota pada pangkalan resmi di wilayah Kelurahan Fatululi.
                     </p>
 
                     {subsidiFeedback && (
                       <div
-                        className={`mt-4 p-4 rounded-2xl border text-xs font-medium flex items-center justify-between gap-3 ${
+                        className={`mt-5 p-4 border-l-4 text-xs font-medium flex items-center justify-between gap-3 ${
                           subsidiFeedback.type === 'success'
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                            : 'bg-red-50 border-red-300 text-red-900'
+                            ? 'bg-neutral-100 border-emerald-600 text-neutral-900'
+                            : 'bg-red-50 border-[#E11D2E] text-red-950'
                         }`}
                       >
                         <span>{subsidiFeedback.text}</span>
@@ -1614,7 +1863,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setCitizenTab('lacak_status')}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-700 text-white font-bold text-xs shrink-0 cursor-pointer"
+                            className="px-4 py-2 bg-[#E11D2E] text-white font-bold text-xs shrink-0 cursor-pointer"
                           >
                             Lacak Tiket
                           </button>
@@ -1622,57 +1871,59 @@ export default function App() {
                       </div>
                     )}
 
-                    <form onSubmit={handleSubsidiSubmit} className="mt-5 space-y-4">
-                      <div>
-                        <label className="block text-xs font-extrabold text-[#78350F] mb-1.5">
-                          Lokasi Pangkalan / Agen Minyak Tanah *
-                        </label>
-                        <select
-                          value={selectedPangkalan}
-                          onChange={(e) => setSelectedPangkalan(e.target.value)}
-                          className="w-full bg-white border border-[#FCD34D] rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#D97706]"
-                        >
-                          {PANGKALAN_OPTIONS.map((p) => (
-                            <option key={p.label} value={p.label}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    <form onSubmit={handleSubsidiSubmit} className="mt-6 space-y-5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
+                            Lokasi Pangkalan / Agen Minyak Tanah *
+                          </label>
+                          <select
+                            value={selectedPangkalan}
+                            onChange={(e) => setSelectedPangkalan(e.target.value)}
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
+                          >
+                            {PANGKALAN_OPTIONS.map((p) => (
+                              <option key={p.label} value={p.label}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                      <div>
-                        <label className="block text-xs font-extrabold text-[#78350F] mb-1.5">
-                          Jenis Kendala di Lapangan *
-                        </label>
-                        <select
-                          value={kendalaDistribusi}
-                          onChange={(e) => setKendalaDistribusi(e.target.value)}
-                          className="w-full bg-white border border-[#FCD34D] rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#D97706]"
-                        >
-                          <option value="Stok Kosong / Harga di Atas HET / Kuota Warga">
-                            Stok Kosong / Harga di Atas HET / Kuota Warga
-                          </option>
-                          <option value="Antrean Panjang & Pembelian Jeriken Berlebih">
-                            Antrean Panjang & Pembelian Jeriken Berlebih
-                          </option>
-                          <option value="Keterlambatan Pasokan Truk Tangki Agen">
-                            Keterlambatan Pasokan Truk Tangki Agen
-                          </option>
-                          <option value="Kendala Pembagian Bantuan Sosial / Beras">
-                            Kendala Pembagian Bantuan Sosial / Beras
-                          </option>
-                        </select>
+                        <div>
+                          <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
+                            Jenis Kendala di Lapangan *
+                          </label>
+                          <select
+                            value={kendalaDistribusi}
+                            onChange={(e) => setKendalaDistribusi(e.target.value)}
+                            className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
+                          >
+                            <option value="Stok Kosong / Harga di Atas HET / Kuota Warga">
+                              Stok Kosong / Harga di Atas HET / Kuota Warga
+                            </option>
+                            <option value="Antrean Panjang & Pembelian Jeriken Berlebih">
+                              Antrean Panjang & Pembelian Jeriken Berlebih
+                            </option>
+                            <option value="Keterlambatan Pasokan Truk Tangki Agen">
+                              Keterlambatan Pasokan Truk Tangki Agen
+                            </option>
+                            <option value="Kendala Pembagian Bantuan Sosial / Beras">
+                              Kendala Pembagian Bantuan Sosial / Beras
+                            </option>
+                          </select>
+                        </div>
                       </div>
 
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-extrabold text-[#78350F]">
+                          <label className="text-xs font-extrabold text-neutral-900">
                             NIK Pelapor (16 Digit KTP) *
                           </label>
                           <button
                             type="button"
                             onClick={() => setSubsidiNik('5371045203900001')}
-                            className="text-[11px] font-bold text-[#B45309] hover:underline cursor-pointer"
+                            className="text-[11px] font-bold text-[#E11D2E] hover:underline cursor-pointer"
                           >
                             Isi Contoh NIK
                           </button>
@@ -1686,12 +1937,12 @@ export default function App() {
                             setSubsidiNik(e.target.value.replace(/\D/g, '').slice(0, 16))
                           }
                           placeholder="Masukkan 16 digit NIK KTP"
-                          className="w-full bg-white border border-[#FCD34D] rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#D97706]"
+                          className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-extrabold text-[#78350F] mb-1.5">
+                        <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                           Keterangan Waktu Kejadian & Harga *
                         </label>
                         <textarea
@@ -1699,149 +1950,306 @@ export default function App() {
                           value={subsidiKeterangan}
                           onChange={(e) => setSubsidiKeterangan(e.target.value)}
                           placeholder="Sebutkan jam kejadian, harga per liter yang diminta, atau kondisi antrean..."
-                          className="w-full bg-white border border-[#FCD34D] rounded-xl p-3.5 text-xs text-slate-900 focus:outline-none focus:border-[#D97706]"
+                          className="w-full bg-[#F7F7F7] border border-neutral-300 p-3.5 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                         />
                       </div>
 
-                      <button
-                        type="submit"
-                        disabled={submittingSubsidi}
-                        className="w-full bg-[#D97706] hover:bg-[#B45309] disabled:opacity-50 text-white font-extrabold text-xs sm:text-sm py-3.5 rounded-xl transition-colors cursor-pointer"
-                      >
-                        {submittingSubsidi ? 'Mengirim Laporan...' : 'Kirim Laporan Subsidi'}
-                      </button>
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={submittingSubsidi}
+                          className="px-7 py-3.5 bg-[#E11D2E] hover:bg-red-700 disabled:opacity-50 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer"
+                        >
+                          {submittingSubsidi ? 'Mengirim Laporan...' : 'Kirim Laporan Subsidi'}
+                        </button>
+                      </div>
                     </form>
                   </div>
                 )}
               </div>
+            </div>
+          </section>
 
-              {/* RIGHT 5 COLUMNS: Alur Penanganan & Pos QR RT Interaktif */}
-              <div className="lg:col-span-5 space-y-6">
-                {/* Card 1: Alur Penanganan Aduan */}
-                <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-7 shadow-2xs">
-                  <div className="flex items-center gap-2.5 mb-6">
-                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#1D4ED8] flex items-center justify-center">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-extrabold text-slate-900">
-                        Alur Penanganan Aduan
-                      </h2>
-                      <p className="text-[11px] text-slate-500">
-                        Standar pelayanan terpadu Kelurahan Fatululi
+          {/* =================================================================
+              4. BAGIAN KONTEN UTAMA 2 (ABU-ABU TERANG #EEEEEE):
+                 Syarat dan Ketentuan Laporan Pengaduan Masyarakat (Panel Accordion Putih)
+             ================================================================= */}
+          <section ref={syaratSectionRef} className="bg-[#EEEEEE] py-16 border-b border-neutral-300">
+            <div className="max-w-5xl mx-auto px-6">
+              <div className="text-center max-w-3xl mx-auto">
+                <h2 className="text-2xl sm:text-4xl font-normal tracking-tight text-neutral-900">
+                  <span className="text-[#E11D2E]">Syarat dan Ketentuan</span>
+                  <span> Laporan Pengaduan Masyarakat</span>
+                </h2>
+                <p className="text-xs sm:text-sm text-neutral-700 mt-3 leading-relaxed">
+                  Untuk membuat laporan pengaduan masyarakat di wilayah Kelurahan Fatululi, warga
+                  diharapkan memperhatikan kelengkapan format laporan, alur verifikasi RT/RW, serta
+                  data dukung agar laporan dapat segera ditindaklanjuti.
+                </p>
+              </div>
+
+              {/* White Accordion Panels with Soft Shadow */}
+              <div className="mt-10 space-y-4">
+                {/* Accordion 1: Format Laporan & Alur Penanganan 4 Tahap */}
+                <div className="bg-white shadow-sm border border-neutral-200/90">
+                  <button
+                    type="button"
+                    onClick={() => setOpenAccordion((prev) => (prev === 1 ? null : 1))}
+                    className="w-full px-6 py-4 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+                  >
+                    <span className="text-xs sm:text-sm font-extrabold text-neutral-900">
+                      Format Laporan Pengaduan yang Baik & Alur Penanganan 4 Tahap Kelurahan
+                    </span>
+                    {openAccordion === 1 ? (
+                      <ChevronUp className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                    )}
+                  </button>
+
+                  {openAccordion === 1 && (
+                    <div className="px-6 pb-6 pt-2 border-t border-neutral-100">
+                      <p className="text-xs text-neutral-600 mb-5 leading-relaxed">
+                        Setiap pengaduan yang dikirimkan melalui web maupun pemindaian Barcode Pos
+                        RT akan diproses melalui 4 tahapan standar pelayanan terpadu Kelurahan
+                        Fatululi:
                       </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-5">
-                    {[
-                      {
-                        step: '1',
-                        badgeClass: 'bg-[#DBEAFE] text-[#1E40AF]',
-                        title: 'Scan Barcode Pos RT / Input Web',
-                        desc: 'Warga melapor mandiri melalui QR Pos RT atau langsung lewat portal web.',
-                      },
-                      {
-                        step: '2',
-                        badgeClass: 'bg-[#FEF3C7] text-[#B45309]',
-                        title: 'Verifikasi Pegawai Kelurahan',
-                        desc: 'Petugas memvalidasi NIK warga Fatululi dan berkoordinasi dengan Ketua RT/RW.',
-                      },
-                      {
-                        step: '3',
-                        badgeClass: 'bg-[#E0E7FF] text-[#3730A3]',
-                        title: 'Tindak Lanjut & Surat Pengantar',
-                        desc: 'Mediasi lapangan atau penerbitan surat resmi ke Polsek, BPBD, Damkar, atau Dinas.',
-                      },
-                      {
-                        step: '4',
-                        badgeClass: 'bg-[#DCFCE7] text-[#15803D]',
-                        title: 'Selesai & Arsip Digital PDF',
-                        desc: 'Status diperbarui secara transparan dan terekam otomatis ke buku register PDF.',
-                      },
-                    ].map((item) => (
-                      <div key={item.step} className="flex items-start gap-4">
-                        <div
-                          className={`w-9 h-9 rounded-xl font-extrabold text-xs flex items-center justify-center shrink-0 ${item.badgeClass}`}
-                        >
-                          {item.step}
-                        </div>
-                        <div>
-                          <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">
-                            {item.title}
-                          </h3>
-                          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                            {item.desc}
-                          </p>
-                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[
+                          {
+                            step: '1',
+                            title: 'Scan Barcode Pos RT / Input Web',
+                            desc: 'Warga melapor mandiri melalui QR Pos RT setempat atau langsung lewat formulir web dengan mencantumkan 16 digit NIK KTP Kota Kupang.',
+                          },
+                          {
+                            step: '2',
+                            title: 'Verifikasi Pegawai Kelurahan',
+                            desc: 'Petugas memvalidasi keabsahan NIK warga Fatululi, kronologi lokasi, dan meneruskan koordinasi kepada Ketua RT/RW wilayah terkait.',
+                          },
+                          {
+                            step: '3',
+                            title: 'Tindak Lanjut & Surat Pengantar',
+                            desc: 'Pelaksanaan mediasi lapangan bersama RT/RW atau penerbitan surat pengantar resmi ke Polsek Oebobo, BPBD, Damkar, atau Disperindag.',
+                          },
+                          {
+                            step: '4',
+                            title: 'Selesai & Arsip Digital PDF',
+                            desc: 'Status tiket diperbarui secara transparan sehingga dapat dilacak warga dan terekam otomatis ke dalam Buku Register Arsip Digital PDF.',
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.step}
+                            className="p-4 bg-[#F9F9F9] border border-neutral-200 flex items-start gap-3.5"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-[#E11D2E] text-white font-extrabold text-xs flex items-center justify-center shrink-0">
+                              {item.step}
+                            </div>
+                            <div>
+                              <h3 className="text-xs sm:text-sm font-extrabold text-neutral-900">
+                                {item.title}
+                              </h3>
+                              <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
+                                {item.desc}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Card 2: Akses Cepat via Pos RT (Interactive QR Card) */}
-                <div className="bg-[#0F172A] rounded-3xl p-6 sm:p-7 text-white shadow-sm border border-slate-800">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                        <QrCode className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h2 className="text-base font-extrabold text-amber-400">
-                          Akses Cepat Pos QR RT/RW
-                        </h2>
-                        <p className="text-[11px] text-slate-400">
-                          Terhubung langsung ke form pengaduan warga
-                        </p>
+                {/* Accordion 2: Dokumen/Data Dukung Pengaduan & Akses Cepat Pos QR RT/RW */}
+                <div className="bg-white shadow-sm border border-neutral-200/90">
+                  <button
+                    type="button"
+                    onClick={() => setOpenAccordion((prev) => (prev === 2 ? null : 2))}
+                    className="w-full px-6 py-4 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-neutral-50 transition-colors"
+                  >
+                    <span className="text-xs sm:text-sm font-extrabold text-neutral-900">
+                      Dokumen/Data Dukung Pengaduan & Akses Cepat Barcode Pos QR RT/RW
+                    </span>
+                    {openAccordion === 2 ? (
+                      <ChevronUp className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-[#E11D2E] shrink-0" />
+                    )}
+                  </button>
+
+                  {openAccordion === 2 && (
+                    <div className="px-6 pb-6 pt-3 border-t border-neutral-100">
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                        <div className="lg:col-span-7 space-y-3 text-xs text-neutral-700 leading-relaxed">
+                          <p className="font-bold text-neutral-900">
+                            Persyaratan Data Dukung Laporan Warga:
+                          </p>
+                          <ul className="space-y-2">
+                            <li className="flex items-start gap-2.5">
+                              <span className="w-4 h-4 rounded-full bg-[#E11D2E] text-white flex items-center justify-center shrink-0 mt-0.5">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              </span>
+                              <span>
+                                <strong>NIK 16 Digit Valid:</strong> Digunakan untuk memastikan
+                                pelapor merupakan warga yang berdomisili atau berkepentingan di
+                                wilayah Kelurahan Fatululi.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <span className="w-4 h-4 rounded-full bg-[#E11D2E] text-white flex items-center justify-center shrink-0 mt-0.5">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              </span>
+                              <span>
+                                <strong>Bukti Foto Lapangan (Opsional namun Disarankan):</strong>{' '}
+                                Foto kondisi drainase, pohon tumbang, antrean pangkalan minyak
+                                tanah, atau patokan lokasi kejadian.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <span className="w-4 h-4 rounded-full bg-[#E11D2E] text-white flex items-center justify-center shrink-0 mt-0.5">
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              </span>
+                              <span>
+                                <strong>Pemindaian Barcode Pos QR RT/RW:</strong> Pilih nomor Pos
+                                RT di samping untuk memindai QR Code yang otomatis mengisi wilayah
+                                RT pada formulir laporan.
+                              </span>
+                            </li>
+                          </ul>
+
+                          {/* Pos RT Switcher Buttons */}
+                          <div className="pt-2 flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-bold text-neutral-900 mr-1">
+                              Pilih Barcode Pos RT:
+                            </span>
+                            {['012', '008', '003', '015'].map((rt) => (
+                              <button
+                                key={rt}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedQrPosRt(rt);
+                                  setFormRt(rt);
+                                }}
+                                className={`px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                                  selectedQrPosRt === rt
+                                    ? 'bg-[#E11D2E] text-white'
+                                    : 'bg-[#EEEEEE] text-neutral-800 hover:bg-neutral-300'
+                                }`}
+                              >
+                                Pos RT {rt}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Interactive QR Code Box */}
+                        <div className="lg:col-span-5 flex justify-center">
+                          <div className="bg-[#262629] text-white p-5 w-full max-w-xs flex flex-col items-center text-center border-t-4 border-[#E11D2E]">
+                            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-white mb-3">
+                              <QrCode className="w-4 h-4 text-[#E11D2E]" />
+                              <span>Akses Cepat Pos QR RT {selectedQrPosRt}</span>
+                            </div>
+                            <div className="bg-white p-3.5 flex flex-col items-center justify-center">
+                              <QRCodeSVG
+                                value={`${window.location.origin}/?pos=POS-RT${selectedQrPosRt}`}
+                                size={120}
+                                fgColor="#0B0B0C"
+                              />
+                              <span className="mt-1.5 text-[10px] font-mono font-bold text-neutral-800">
+                                POS-RT{selectedQrPosRt}-FATULULI
+                              </span>
+                            </div>
+                            <span className="mt-3 text-[11px] text-neutral-300">
+                              Hotline Lurah: (0380) 821xxx • Layanan 24 Jam
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Pos RT Switcher Pills */}
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {['012', '008', '003', '015'].map((rt) => (
-                      <button
-                        key={rt}
-                        type="button"
-                        onClick={() => {
-                          setSelectedQrPosRt(rt);
-                          setFormRt(rt);
-                        }}
-                        className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors cursor-pointer ${
-                          selectedQrPosRt === rt
-                            ? 'bg-[#1D4ED8] text-white'
-                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        }`}
-                      >
-                        Pos RT {rt}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="my-5 mx-auto w-44 h-44 bg-white rounded-2xl p-4 flex flex-col items-center justify-center shadow-inner">
-                    <QRCodeSVG
-                      value={`${window.location.origin}/?pos=POS-RT${selectedQrPosRt}`}
-                      size={128}
-                      fgColor="#0F172A"
-                    />
-                    <span className="mt-1.5 text-[10px] font-mono font-bold text-slate-600">
-                      POS-RT{selectedQrPosRt}-FATULULI
-                    </span>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-300">
-                    <div className="flex items-center gap-2">
-                      <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Hotline Lurah: (0380) 821xxx</span>
-                    </div>
-                    <span className="text-[11px] text-emerald-400 font-semibold">
-                      Layanan 24 Jam
-                    </span>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
-          </main>
+          </section>
+
+          {/* =================================================================
+              5. BAGIAN KONTEN UTAMA 3 (PUTIH BERSIH):
+                 Perlindungan Bagi Pelapor
+             ================================================================= */}
+          <section ref={perlindunganSectionRef} className="bg-white py-16">
+            <div className="max-w-7xl mx-auto px-6">
+              <div className="max-w-3xl">
+                <h2 className="text-2xl sm:text-4xl font-normal tracking-tight text-neutral-900">
+                  <span className="text-[#E11D2E]">Perlindungan</span>
+                  <span> Bagi Pelapor</span>
+                </h2>
+                <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed mt-4">
+                  Jika memiliki informasi maupun bukti terjadinya gangguan ketertiban lingkungan,
+                  penyelewengan distribusi subsidi minyak tanah, atau permasalahan sensitif antar
+                  warga, jangan ragu untuk melaporkannya kepada Pemerintah Kelurahan Fatululi.
+                  Kerahasiaan identitas pelapor dijamin sepenuhnya melalui sistem penyamaran NIK
+                  otomatis (<span className="font-mono font-bold">537104******0001</span>) dan opsi{' '}
+                  <strong>Kategori Khusus / Rahasia</strong> yang menyembunyikan nama pelapor dari
+                  publik maupun tetangga sekitar.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* =================================================================
+              6. BAGIAN AKSI / TOMBOL UTAMA (SPLIT TWO-COLUMN SECTION SEBELUM FOOTER)
+                 Kiri: Latar Gelap (#262629) | Kanan: Latar Abu-Abu Terang (#EFEFEF)
+             ================================================================= */}
+          <section className="bg-white">
+            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 items-stretch">
+              {/* Left Column: Dark Charcoal Background (#262629) */}
+              <div className="lg:col-span-6 bg-[#262629] text-white p-8 sm:p-12 lg:p-14 flex flex-col justify-center">
+                <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white">
+                  Prosedur Pelaporan Pengaduan Masyarakat
+                </h3>
+                <p className="text-xs sm:text-sm text-neutral-300 leading-relaxed mt-3 max-w-xl">
+                  Pahami prosedur dan tahapan verifikasi pada Sistem Layanan Pengaduan Masyarakat
+                  saat Anda hendak membuat laporan atau memantau progres mediasi di Kelurahan
+                  Fatululi.
+                </p>
+                <div className="mt-7 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => scrollToWorkspace('lacak_status')}
+                    className="px-5 py-3 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer"
+                  >
+                    Lihat Prosedur & Lacak Tiket
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollToWorkspace('aduan_subsidi')}
+                    className="px-5 py-3 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer"
+                  >
+                    Pengaduan Subsidi Minyak Tanah
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Column: Light Gray Background (#EFEFEF) */}
+              <div className="lg:col-span-6 bg-[#EFEFEF] text-neutral-900 p-8 sm:p-12 lg:p-14 flex flex-col justify-center lg:mt-10">
+                <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-neutral-900">
+                  Lapor Masalah & Ketertiban Lingkungan
+                </h3>
+                <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed mt-3 max-w-xl">
+                  Sampaikan laporan lingkungan, fasilitas umum, maupun kondisi darurat di wilayah
+                  RT/RW Anda. Kerahasiaan identitas pelapor terjamin!
+                </p>
+                <div className="mt-7">
+                  <button
+                    type="button"
+                    onClick={() => scrollToWorkspace('buat_laporan')}
+                    className="px-6 py-3 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer"
+                  >
+                    Lapor Sekarang
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
         </>
       )}
 
@@ -1849,39 +2257,39 @@ export default function App() {
           SCREEN LOGIN APARAT: GERBANG AUTENTIKASI KHUSUS LURAH / PEGAWAI / RT-RW
          ===================================================================== */}
       {activeScreen === 'login_aparat' && (
-        <main className="flex-1 flex items-center justify-center px-6 py-12">
-          <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 sm:p-9 shadow-sm">
+        <main className="flex-1 bg-[#EEEEEE] flex items-center justify-center px-6 py-14">
+          <div className="max-w-md w-full bg-white border border-neutral-300 border-t-4 border-t-[#E11D2E] p-8 sm:p-9 shadow-md">
             <div className="flex items-center gap-3 mb-5">
               <button
                 type="button"
                 onClick={() => setActiveScreen('portal_warga')}
                 title="Kembali ke Home"
-                className="w-11 h-11 rounded-2xl bg-[#0F172A] text-[#F59E0B] flex items-center justify-center shrink-0 cursor-pointer hover:bg-slate-800 transition-colors"
+                className="w-11 h-11 bg-[#0B0B0C] text-white hover:bg-[#E11D2E] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
                 <Home className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-lg font-extrabold text-slate-900">
+                <h1 className="text-lg font-extrabold text-neutral-950">
                   Login Portal Pegawai & Lurah
                 </h1>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-neutral-500">
                   Akses Verifikasi Aduan, Mediasi & Ekspor PDF Resmi
                 </p>
               </div>
             </div>
 
             {/* Tab Switcher: Masuk Akun vs Buat Akun Baru */}
-            <div className="mb-5 bg-slate-100 p-1 rounded-2xl grid grid-cols-2 gap-1">
+            <div className="mb-5 bg-[#EEEEEE] p-1 grid grid-cols-2 gap-1 border border-neutral-300">
               <button
                 type="button"
                 onClick={() => {
                   setAuthTab('login');
                   setLoginError(null);
                 }}
-                className={`py-2.5 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                className={`py-2.5 px-3 text-xs font-extrabold transition-all cursor-pointer ${
                   authTab === 'login'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#E11D2E] text-white'
+                    : 'bg-white text-neutral-700 hover:text-neutral-950'
                 }`}
               >
                 Masuk Akun (Login)
@@ -1892,10 +2300,10 @@ export default function App() {
                   setAuthTab('register');
                   setLoginError(null);
                 }}
-                className={`py-2.5 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                className={`py-2.5 px-3 text-xs font-extrabold transition-all cursor-pointer ${
                   authTab === 'register'
-                    ? 'bg-white text-[#1D4ED8] shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#E11D2E] text-white'
+                    : 'bg-white text-neutral-700 hover:text-neutral-950'
                 }`}
               >
                 Buat Akun Baru
@@ -1903,19 +2311,23 @@ export default function App() {
             </div>
 
             {loginError && (
-              <div className="mb-5 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs font-medium text-red-800">
+              <div className="mb-5 p-3.5 bg-red-50 border-l-4 border-[#E11D2E] text-xs font-medium text-red-900">
                 {loginError}
               </div>
             )}
 
             {authTab === 'login' ? (
               <form onSubmit={handleOfficerLoginSubmit} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
-                  Halaman ini khusus untuk <strong>Lurah, Kasi Trantib, Staf Administrasi, dan Ketua RT/RW Kelurahan Fatululi</strong>. Warga umum tidak memerlukan login untuk membuat atau melacak pengaduan.
+                <div className="p-3.5 bg-[#F7F7F7] border border-neutral-200 text-[11px] text-neutral-600 leading-relaxed">
+                  Halaman ini khusus untuk{' '}
+                  <strong>
+                    Lurah, Kasi Trantib, Staf Administrasi, dan Ketua RT/RW Kelurahan Fatululi
+                  </strong>
+                  . Warga umum tidak memerlukan login untuk membuat atau melacak pengaduan.
                 </div>
 
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                  <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                     Username / NIP Akun Dinas *
                   </label>
                   <input
@@ -1925,12 +2337,12 @@ export default function App() {
                     placeholder="Masukkan Username atau 18 digit NIP..."
                     autoComplete="username"
                     required
-                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                  <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                     Kata Sandi / Password Aparat *
                   </label>
                   <input
@@ -1940,14 +2352,14 @@ export default function App() {
                     placeholder="Masukkan kata sandi akun dinas..."
                     autoComplete="current-password"
                     required
-                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-mono text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={submittingAuth}
-                  className="w-full py-3.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-[#E11D2E] hover:bg-red-700 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
                   <UserCheck className="w-4 h-4" />
                   <span>{submittingAuth ? 'Memverifikasi...' : 'Masuk ke Dashboard Admin'}</span>
@@ -1955,12 +2367,14 @@ export default function App() {
               </form>
             ) : (
               <form onSubmit={handleOfficerRegisterSubmit} className="space-y-3.5">
-                <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-[11px] text-blue-900 leading-relaxed">
-                  Pendaftaran akun baru staf/RT-RW membutuhkan <strong>Kode Otorisasi Kantor Kelurahan</strong> dari Lurah atau Admin Utama agar warga luar tidak dapat membuat akun admin sembarangan.
+                <div className="p-3 bg-[#F7F7F7] border border-neutral-300 text-[11px] text-neutral-700 leading-relaxed">
+                  Pendaftaran akun baru staf/RT-RW membutuhkan{' '}
+                  <strong>Kode Otorisasi Kantor Kelurahan</strong> dari Lurah atau Admin Utama agar
+                  warga luar tidak dapat membuat akun admin sembarangan.
                 </div>
 
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                  <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                     Nama Lengkap & Gelar Petugas *
                   </label>
                   <input
@@ -1969,13 +2383,13 @@ export default function App() {
                     onChange={(e) => setRegName(e.target.value)}
                     placeholder="Contoh: Lukas Neno, S.AP"
                     required
-                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                    className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                       Username Login *
                     </label>
                     <input
@@ -1984,11 +2398,11 @@ export default function App() {
                       onChange={(e) => setRegUsername(e.target.value.replace(/\s+/g, ''))}
                       placeholder="Contoh: lukas_ftl"
                       required
-                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                      className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                       NIP / Kode RT (Opsional)
                     </label>
                     <input
@@ -1996,14 +2410,14 @@ export default function App() {
                       value={regNip}
                       onChange={(e) => setRegNip(e.target.value)}
                       placeholder="1985xxxxxxxx / RT-005"
-                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                      className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs font-mono text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                       Jabatan / Peran *
                     </label>
                     <select
@@ -2013,7 +2427,7 @@ export default function App() {
                           e.target.value as 'lurah' | 'kasi_trantib' | 'staf_admin' | 'ketua_rt'
                         )
                       }
-                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                      className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                     >
                       <option value="staf_admin">Staf Administrasi</option>
                       <option value="kasi_trantib">Kasi Trantib & Pelayanan</option>
@@ -2023,7 +2437,7 @@ export default function App() {
                   </div>
                   {regRole === 'ketua_rt' && (
                     <div>
-                      <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                      <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                         Nomor Wilayah RT *
                       </label>
                       <input
@@ -2033,7 +2447,7 @@ export default function App() {
                         onChange={(e) => setRegRtScope(e.target.value.replace(/\D/g, ''))}
                         placeholder="012"
                         required
-                        className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                        className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                       />
                     </div>
                   )}
@@ -2041,7 +2455,7 @@ export default function App() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                       Buat Kata Sandi Baru *
                     </label>
                     <input
@@ -2050,11 +2464,11 @@ export default function App() {
                       onChange={(e) => setRegPassword(e.target.value)}
                       placeholder="Minimal 6 karakter"
                       required
-                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                      className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs font-mono text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                    <label className="block text-xs font-extrabold text-neutral-900 mb-1">
                       Kode Otorisasi Kantor *
                     </label>
                     <input
@@ -2063,7 +2477,7 @@ export default function App() {
                       onChange={(e) => setRegOfficeCode(e.target.value)}
                       placeholder="Kode rahasia kantor..."
                       required
-                      className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-[#1D4ED8] focus:bg-white"
+                      className="w-full bg-[#F7F7F7] border border-neutral-300 px-3.5 py-2.5 text-xs font-mono font-bold text-neutral-900 focus:outline-none focus:border-[#E11D2E] focus:bg-white"
                     />
                   </div>
                 </div>
@@ -2071,9 +2485,9 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={submittingAuth}
-                  className="w-full py-3.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-[#0B0B0C] hover:bg-[#262629] disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <UserCheck className="w-4 h-4 text-[#F59E0B]" />
+                  <UserCheck className="w-4 h-4 text-[#E11D2E]" />
                   <span>
                     {submittingAuth
                       ? 'Menyimpan Akun ke Database...'
@@ -2083,18 +2497,18 @@ export default function App() {
               </form>
             )}
 
-            <div className="my-5 flex items-center gap-3 text-[11px] text-slate-400">
-              <div className="h-px flex-1 bg-slate-200" />
+            <div className="my-5 flex items-center gap-3 text-[11px] text-neutral-400">
+              <div className="h-px flex-1 bg-neutral-200" />
               <span>ATAU SSO GOOGLE</span>
-              <div className="h-px flex-1 bg-slate-200" />
+              <div className="h-px flex-1 bg-neutral-200" />
             </div>
 
             <button
               type="button"
               onClick={handleGoogleOfficerLogin}
-              className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              className="w-full py-3 bg-[#EEEEEE] hover:bg-neutral-300 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
-              <LogIn className="w-4 h-4 text-[#1D4ED8]" />
+              <LogIn className="w-4 h-4 text-[#E11D2E]" />
               <span>Login dengan Akun Google Resmi</span>
             </button>
           </div>
@@ -2102,12 +2516,198 @@ export default function App() {
       )}
 
       {/* =====================================================================
+          7. FOOTER HITAM PEKAT (#050505) DENGAN 4 KOLOM & TOMBOL BACK TO TOP
+         ===================================================================== */}
+      {activeScreen !== 'admin_panel' && (
+        <footer className="bg-[#050505] text-white border-t border-neutral-900">
+          <div className="max-w-7xl mx-auto px-6 py-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8">
+              {/* Column 1: Identitas & Alamat Kantor Lurah Fatululi */}
+              <div className="lg:col-span-4 lg:pr-6 lg:border-r lg:border-neutral-800 space-y-3">
+                <h4 className="text-sm font-extrabold text-white tracking-wide">
+                  Kantor Kelurahan Fatululi
+                </h4>
+                <p className="text-xs text-neutral-300 leading-relaxed font-semibold">
+                  Jl. Frans Seda, Kelurahan Fatululi, Kecamatan Oebobo, Kota Kupang, Provinsi Nusa
+                  Tenggara Timur 85111
+                </p>
+                <div className="pt-2 flex items-center gap-3 text-neutral-400">
+                  <button
+                    type="button"
+                    onClick={() => scrollToWorkspace('buat_laporan')}
+                    title="Portal Web Resmi"
+                    className="w-8 h-8 rounded-full bg-neutral-900 hover:bg-[#E11D2E] text-white flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <Globe className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollToWorkspace('lacak_status')}
+                    title="Pelacakan Tiket"
+                    className="w-8 h-8 rounded-full bg-neutral-900 hover:bg-[#E11D2E] text-white flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenAccordion(2);
+                      syaratSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    title="Pos QR RT/RW"
+                    className="w-8 h-8 rounded-full bg-neutral-900 hover:bg-[#E11D2E] text-white flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <QrCode className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveScreen('login_aparat')}
+                    title="Portal Aparat Kelurahan"
+                    className="w-8 h-8 rounded-full bg-neutral-900 hover:bg-[#E11D2E] text-white flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Column 2: Menu Bantuan */}
+              <div className="lg:col-span-2 lg:px-4 space-y-2.5">
+                <h4 className="text-sm font-extrabold text-white tracking-wide">Bantuan</h4>
+                <ul className="space-y-2 text-xs text-neutral-400">
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => scrollToWorkspace('buat_laporan')}
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      Buat Pengaduan
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => scrollToWorkspace('lacak_status')}
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      FAQ & Lacak Tiket
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => scrollToWorkspace('aduan_subsidi')}
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      Subsidi Minyak Tanah
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenAccordion(2);
+                        syaratSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      Pos QR RT/RW
+                    </button>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Column 3: Menu Informasi */}
+              <div className="lg:col-span-2 lg:px-4 lg:border-r lg:border-neutral-800 space-y-2.5">
+                <h4 className="text-sm font-extrabold text-white tracking-wide">Informasi</h4>
+                <ul className="space-y-2 text-xs text-neutral-400">
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        perlindunganSectionRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      Kebijakan Privasi
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        syaratSectionRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      Syarat & Ketentuan
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('login_aparat');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      Portal Aparat & Lurah
+                    </button>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Column 4: Kontak Resmi */}
+              <div className="lg:col-span-4 lg:pl-4 space-y-3 text-xs text-neutral-300">
+                <div className="flex items-center gap-3">
+                  <PhoneCall className="w-4 h-4 text-white shrink-0" />
+                  <span>(0380) 821xxx (Kantor Lurah Fatululi)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Bell className="w-4 h-4 text-white shrink-0" />
+                  <span>112 (Call Center Darurat Kota Kupang)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <MapPin className="w-4 h-4 text-white shrink-0" />
+                  <span>Posko Trantib & Mediasi RT 001 – RT 015</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Mail className="w-4 h-4 text-white shrink-0" />
+                  <span>pengaduan@fatululi.kupangkota.go.id</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Copyright Bar & Back to Top Button */}
+          <div className="bg-[#0B0B0C] border-t border-neutral-900">
+            <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-4 text-xs text-neutral-400">
+              <span>
+                Hak Cipta © 2026 Kelurahan Fatululi Pemerintah Kota Kupang. Semua Hak Dilindungi.
+              </span>
+
+              <button
+                type="button"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="inline-flex items-center gap-2.5 text-white font-extrabold text-xs hover:text-[#E11D2E] transition-colors cursor-pointer"
+              >
+                <span>Back to Top</span>
+                <span className="w-7 h-7 rounded-full border border-white/80 flex items-center justify-center">
+                  <ChevronUp className="w-4 h-4" />
+                </span>
+              </button>
+            </div>
+          </div>
+        </footer>
+      )}
+
+      {/* =====================================================================
           KHUSUS ADMIN / LURAH / PEGAWAI VIEW: PANEL PEGAWAI & LURAH
          ===================================================================== */}
       {activeScreen === 'admin_panel' && officerSession && (
         <div className="flex-1 flex flex-col lg:flex-row min-h-screen">
-          {/* LEFT DARK SIDEBAR (#111827) with Home icon and auto-width (w-fit) option pills */}
-          <aside className="w-full lg:w-64 bg-[#111827] text-slate-300 p-5 flex flex-col justify-between shrink-0">
+          {/* LEFT DARK SIDEBAR (#0B0B0C) with Home icon and auto-width (w-fit) option pills */}
+          <aside className="w-full lg:w-64 bg-[#0B0B0C] text-neutral-300 p-5 flex flex-col justify-between shrink-0 border-r border-neutral-800">
             <div>
               {/* Brand Lockup inside Sidebar with Home Icon */}
               <div className="flex items-center gap-3 px-2 py-2">
@@ -2117,7 +2717,7 @@ export default function App() {
                     setAdminSidebarMenu('dashboard');
                   }}
                   title="Home Dashboard"
-                  className="w-10 h-10 rounded-xl bg-[#F59E0B] hover:bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                  className="w-10 h-10 rounded-xl bg-[#E11D2E] hover:bg-red-700 text-white flex items-center justify-center shrink-0 transition-colors cursor-pointer"
                 >
                   <Home className="w-5 h-5" />
                 </button>
@@ -2125,7 +2725,7 @@ export default function App() {
                   <div className="text-sm font-extrabold text-white leading-tight">
                     Admin Fatululi
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Panel Pegawai & Lurah</div>
+                  <div className="text-[11px] text-neutral-400 mt-0.5">Panel Pegawai & Lurah</div>
                 </div>
               </div>
 
@@ -2141,7 +2741,7 @@ export default function App() {
                         pengaduan: !prev.pengaduan,
                       }))
                     }
-                    className="w-fit px-4 py-2 rounded-full bg-[#334155] hover:bg-[#3E4C63] text-white text-sm font-semibold inline-flex items-center gap-3 transition-all cursor-pointer"
+                    className="w-fit px-4 py-2 rounded-full bg-[#262629] hover:bg-neutral-700 text-white text-sm font-semibold inline-flex items-center gap-3 transition-all cursor-pointer"
                   >
                     <span>Pengaduan</span>
                     <ChevronDown
@@ -2179,8 +2779,8 @@ export default function App() {
                             onClick={() => setAdminSidebarMenu(menu.id)}
                             className={`w-fit px-3.5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                               isActive
-                                ? 'bg-[#1D4ED8] text-white shadow-xs'
-                                : 'bg-[#1E293B] text-slate-300 hover:bg-[#334155] hover:text-white'
+                                ? 'bg-[#E11D2E] text-white shadow-xs'
+                                : 'bg-[#1A1A1D] text-neutral-300 hover:bg-[#262629] hover:text-white'
                             }`}
                           >
                             {menu.label}
@@ -2201,7 +2801,7 @@ export default function App() {
                         layanan: !prev.layanan,
                       }))
                     }
-                    className="w-fit px-4 py-2 rounded-full bg-[#334155] hover:bg-[#3E4C63] text-white text-sm font-semibold inline-flex items-center gap-3 transition-all cursor-pointer"
+                    className="w-fit px-4 py-2 rounded-full bg-[#262629] hover:bg-neutral-700 text-white text-sm font-semibold inline-flex items-center gap-3 transition-all cursor-pointer"
                   >
                     <span>Dokumen & Layanan</span>
                     <ChevronDown
@@ -2239,8 +2839,8 @@ export default function App() {
                             onClick={() => setAdminSidebarMenu(menu.id)}
                             className={`w-fit px-3.5 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                               isActive
-                                ? 'bg-[#1D4ED8] text-white shadow-xs'
-                                : 'bg-[#1E293B] text-slate-300 hover:bg-[#334155] hover:text-white'
+                                ? 'bg-[#E11D2E] text-white shadow-xs'
+                                : 'bg-[#1A1A1D] text-neutral-300 hover:bg-[#262629] hover:text-white'
                             }`}
                           >
                             {menu.label}
@@ -2251,7 +2851,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setActiveScreen('portal_warga')}
-                        className="w-fit px-3.5 py-2 rounded-full text-xs font-semibold bg-[#1E293B] text-slate-300 hover:bg-[#334155] hover:text-white transition-all cursor-pointer"
+                        className="w-fit px-3.5 py-2 rounded-full text-xs font-semibold bg-[#1A1A1D] text-neutral-300 hover:bg-[#262629] hover:text-white transition-all cursor-pointer"
                       >
                         Halaman Publik Warga
                       </button>
@@ -2271,22 +2871,22 @@ export default function App() {
             </div>
 
             {/* Bottom Officer Status Box inside Sidebar with Direct Logout Option */}
-            <div className="mt-8 bg-[#1E293B] rounded-xl p-4 border border-slate-700/60">
+            <div className="mt-8 bg-[#1A1A1D] rounded-xl p-4 border border-neutral-800">
               <div className="text-xs font-extrabold text-white">{officerSession.jabatan}</div>
-              <div className="text-[11px] text-amber-300 font-semibold mt-0.5">
+              <div className="text-[11px] text-[#E11D2E] font-bold mt-0.5">
                 {officerSession.name}
               </div>
-              <div className="text-[11px] font-semibold text-sky-400 mt-1">
-                Terhubung Database Aktif
+              <div className="text-[11px] font-semibold text-emerald-400 mt-1">
+                Terhubung Database PostgreSQL
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">Akses Multi-User Aktif</div>
+              <div className="text-[11px] text-neutral-400 mt-0.5">Akses Multi-User Aktif</div>
 
               {/* Quick Switcher for Public View & Direct Logout */}
-              <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap items-center gap-2">
+              <div className="mt-3 pt-3 border-t border-neutral-800 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setActiveScreen('portal_warga')}
-                  className="w-fit py-1.5 px-3 rounded-full bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="w-fit py-1.5 px-3 rounded-full bg-[#262629] hover:bg-neutral-700 text-[11px] font-bold text-neutral-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Home className="w-3.5 h-3.5" />
                   <span>Home Warga</span>
@@ -2294,7 +2894,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleOfficerLogout}
-                  className="w-fit py-1.5 px-3.5 rounded-full bg-red-950/80 hover:bg-red-900 border border-red-800/60 text-[11px] font-bold text-red-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="w-fit py-1.5 px-3.5 rounded-full bg-[#E11D2E] hover:bg-red-700 text-[11px] font-bold text-white inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Logout</span>
@@ -2304,16 +2904,16 @@ export default function App() {
           </aside>
 
           {/* RIGHT MAIN WORKSPACE */}
-          <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+          <div className="flex-1 flex flex-col bg-[#F5F5F5]">
             {/* Top White Header inside Admin Panel */}
-            <div className="bg-white border-b border-slate-200 px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-white border-b border-neutral-200 px-8 py-4 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h1 className="text-sm sm:text-base font-extrabold text-slate-900">
+                <h1 className="text-sm sm:text-base font-extrabold text-neutral-950">
                   Manajemen Pengaduan & Arsip Digital Kelurahan Fatululi
                 </h1>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-neutral-500">
                   Petugas Aktif:{' '}
-                  <span className="font-bold text-slate-800">{officerSession.name}</span> (
+                  <span className="font-bold text-neutral-900">{officerSession.name}</span> (
                   {officerSession.jabatan})
                 </p>
               </div>
@@ -2325,12 +2925,12 @@ export default function App() {
                     type="button"
                     onClick={() => setIsNotifOpen((prev) => !prev)}
                     title="Notifikasi Pengaduan Masuk & Tindak Lanjut"
-                    className="relative px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs inline-flex items-center gap-2 transition-colors cursor-pointer"
+                    className="relative px-3.5 py-2.5 bg-[#EEEEEE] hover:bg-neutral-300 text-neutral-900 font-bold text-xs inline-flex items-center gap-2 transition-colors cursor-pointer"
                   >
-                    <Bell className="w-4 h-4 text-[#1D4ED8]" />
+                    <Bell className="w-4 h-4 text-[#E11D2E]" />
                     <span>Notifikasi</span>
                     {unreadNotifications.length > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-extrabold leading-none">
+                      <span className="px-1.5 py-0.5 rounded-full bg-[#E11D2E] text-white text-[10px] font-extrabold leading-none">
                         {unreadNotifications.length}
                       </span>
                     )}
@@ -2342,13 +2942,13 @@ export default function App() {
                         className="fixed inset-0 z-30"
                         onClick={() => setIsNotifOpen(false)}
                       />
-                      <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white border border-slate-200 shadow-xl z-40 overflow-hidden">
-                        <div className="px-4 py-3 bg-[#111827] text-white flex items-center justify-between">
+                      <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-neutral-300 shadow-2xl z-40 overflow-hidden">
+                        <div className="px-4 py-3 bg-[#0B0B0C] text-white flex items-center justify-between">
                           <div>
                             <div className="text-xs font-extrabold">
                               Notifikasi Pengaduan & Tindak Lanjut
                             </div>
-                            <div className="text-[11px] text-slate-300">
+                            <div className="text-[11px] text-neutral-300">
                               {unreadNotifications.length} belum dibaca •{' '}
                               {actionableNotifications.length} perlu tindak lanjut
                             </div>
@@ -2359,16 +2959,16 @@ export default function App() {
                               onClick={() =>
                                 setReadNotifIds(actionableNotifications.map((n) => n.id))
                               }
-                              className="text-[11px] font-bold text-amber-300 hover:underline cursor-pointer"
+                              className="text-[11px] font-bold text-[#E11D2E] hover:underline cursor-pointer"
                             >
                               Tandai Dibaca
                             </button>
                           )}
                         </div>
 
-                        <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                        <div className="max-h-80 overflow-y-auto divide-y divide-neutral-200">
                           {actionableNotifications.length === 0 ? (
-                            <div className="p-5 text-center text-xs text-slate-500">
+                            <div className="p-5 text-center text-xs text-neutral-500">
                               Semua pengaduan telah selesai ditindaklanjuti.
                             </div>
                           ) : (
@@ -2384,17 +2984,17 @@ export default function App() {
                                 <div
                                   key={notif.id}
                                   className={`p-3.5 transition-colors ${
-                                    isUnread ? 'bg-blue-50/50' : 'bg-white'
+                                    isUnread ? 'bg-red-50/40' : 'bg-white'
                                   }`}
                                 >
                                   <div className="flex items-start justify-between gap-2">
                                     <span
-                                      className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                      className={`inline-block px-2 py-0.5 text-[10px] font-extrabold ${
                                         isEmergency
-                                          ? 'bg-red-100 text-red-700'
+                                          ? 'bg-[#E11D2E] text-white'
                                           : isNew
-                                          ? 'bg-blue-100 text-[#1D4ED8]'
-                                          : 'bg-amber-100 text-amber-800'
+                                          ? 'bg-[#262629] text-white'
+                                          : 'bg-neutral-200 text-neutral-800'
                                       }`}
                                     >
                                       {isEmergency
@@ -2403,15 +3003,15 @@ export default function App() {
                                         ? 'Pengaduan Baru Masuk'
                                         : 'Perlu Mediasi / Verifikasi RT'}
                                     </span>
-                                    <span className="text-[11px] font-mono font-bold text-slate-500">
+                                    <span className="text-[11px] font-mono font-bold text-neutral-500">
                                       #{shortCode}
                                     </span>
                                   </div>
 
-                                  <div className="text-xs font-extrabold text-slate-900 mt-1.5">
+                                  <div className="text-xs font-extrabold text-neutral-900 mt-1.5">
                                     {notif.title}
                                   </div>
-                                  <div className="text-[11px] text-slate-500 mt-0.5">
+                                  <div className="text-[11px] text-neutral-500 mt-0.5">
                                     Wilayah RT {notif.rtNumber} / RW {notif.rwNumber} • Status:{' '}
                                     {notif.status.replace(/_/g, ' ')}
                                   </div>
@@ -2426,7 +3026,7 @@ export default function App() {
                                         setIsNotifOpen(false);
                                         handleAdminRowAction(notif);
                                       }}
-                                      className="px-3 py-1.5 rounded-lg bg-[#1D4ED8] hover:bg-blue-800 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                                      className="px-3 py-1.5 bg-[#E11D2E] hover:bg-red-700 text-white text-[11px] font-bold transition-colors cursor-pointer"
                                     >
                                       Tindak Lanjuti Sekarang
                                     </button>
@@ -2455,9 +3055,9 @@ export default function App() {
                       showToast(`Surat Pengantar untuk #${target.ticketNumber} berhasil diunduh.`);
                     }
                   }}
-                  className="bg-[#EFF6FF] hover:bg-blue-100 border border-[#93C5FD] text-[#1D4ED8] font-extrabold text-xs px-4 py-2.5 rounded-xl inline-flex items-center gap-2 transition-colors cursor-pointer"
+                  className="bg-[#262629] hover:bg-neutral-800 text-white font-extrabold text-xs px-4 py-2.5 inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <FileText className="w-3.5 h-3.5" />
+                  <FileText className="w-3.5 h-3.5 text-[#E11D2E]" />
                   <span>Buat Surat Pengantar</span>
                 </button>
                 <button
@@ -2470,7 +3070,7 @@ export default function App() {
                     );
                     showToast('Laporan Buku Arsip Digital (.PDF) berhasil diunduh.');
                   }}
-                  className="bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl inline-flex items-center gap-2 transition-colors cursor-pointer"
+                  className="bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs px-4 py-2.5 inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Ekspor Laporan PDF</span>
@@ -2478,17 +3078,17 @@ export default function App() {
               </div>
             </div>
 
-            {/* Simple Urgent / New Complaint Notification Banner for Staff */}
+            {/* Urgent / New Complaint Notification Banner for Staff */}
             {!hideUrgentBanner && actionableNotifications.length > 0 && (
-              <div className="mx-8 mt-5 bg-[#FFFBEB] border border-[#FDE68A] rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="mx-8 mt-5 bg-white border-l-4 border-[#E11D2E] border border-neutral-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-[#F59E0B] text-white flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 bg-[#E11D2E] text-white flex items-center justify-center shrink-0">
                     <Bell className="w-4 h-4" />
                   </div>
-                  <div className="text-xs text-[#78350F]">
+                  <div className="text-xs text-neutral-800">
                     <span className="font-extrabold">Pemberitahuan Staf Kelurahan: </span>
                     Terdapat{' '}
-                    <span className="font-extrabold">
+                    <span className="font-extrabold text-[#E11D2E]">
                       {actionableNotifications.length} pengaduan aktif
                     </span>{' '}
                     (termasuk laporan prioritas{' '}
@@ -2502,7 +3102,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => handleAdminRowAction(actionableNotifications[0])}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#D97706] hover:bg-[#B45309] text-white font-bold text-xs transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 bg-[#E11D2E] hover:bg-red-700 text-white font-bold text-xs transition-colors cursor-pointer"
                   >
                     Tindak Lanjuti Prioritas
                   </button>
@@ -2510,7 +3110,7 @@ export default function App() {
                     type="button"
                     onClick={() => setHideUrgentBanner(true)}
                     title="Tutup pemberitahuan"
-                    className="p-1.5 rounded-lg text-[#92400E] hover:bg-amber-100 cursor-pointer"
+                    className="p-1.5 text-neutral-500 hover:bg-neutral-100 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -2520,56 +3120,58 @@ export default function App() {
 
             {/* 4 KPI Summary Cards Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 px-8 pt-6">
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <div className="text-xs font-semibold text-slate-500">Total Aduan Bulan Ini</div>
-                <div className="text-2xl font-extrabold text-slate-900 mt-1.5 tabular-nums">
+              <div className="bg-white border border-neutral-200 border-t-4 border-t-[#0B0B0C] p-5">
+                <div className="text-xs font-semibold text-neutral-500">Total Aduan Bulan Ini</div>
+                <div className="text-2xl font-extrabold text-neutral-950 mt-1.5 tabular-nums">
                   {Math.max(48, complaints.length + 44)}
                 </div>
-                <div className="text-xs font-bold text-[#16A34A] mt-2">
+                <div className="text-xs font-bold text-emerald-700 mt-2">
                   Terekam di Arsip Digital
                 </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <div className="text-xs font-semibold text-slate-500">
+              <div className="bg-white border border-neutral-200 border-t-4 border-t-[#262629] p-5">
+                <div className="text-xs font-semibold text-neutral-500">
                   Menunggu Verifikasi & RT
                 </div>
-                <div className="text-2xl font-extrabold text-[#D97706] mt-1.5 tabular-nums">12</div>
-                <div className="text-xs font-bold text-[#D97706] mt-2">
+                <div className="text-2xl font-extrabold text-neutral-900 mt-1.5 tabular-nums">
+                  12
+                </div>
+                <div className="text-xs font-bold text-neutral-700 mt-2">
                   Perlu Koordinasi RT/RW
                 </div>
               </div>
 
-              <div className="bg-[#FFFDF5] border border-[#FDE68A] rounded-2xl p-5">
-                <div className="text-xs font-extrabold text-[#92400E]">
+              <div className="bg-white border border-neutral-200 border-t-4 border-t-[#E11D2E] p-5">
+                <div className="text-xs font-extrabold text-neutral-800">
                   Aduan Subsidi Minyak Tanah
                 </div>
-                <div className="text-2xl font-extrabold text-[#92400E] mt-1.5 tabular-nums">9</div>
-                <div className="text-xs font-bold text-[#B45309] mt-2">
+                <div className="text-2xl font-extrabold text-[#E11D2E] mt-1.5 tabular-nums">9</div>
+                <div className="text-xs font-bold text-neutral-600 mt-2">
                   Laporan Pangkalan/Kuota
                 </div>
               </div>
 
-              <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-2xl p-5">
-                <div className="text-xs font-extrabold text-[#991B1B]">
+              <div className="bg-[#262629] text-white border-t-4 border-t-[#E11D2E] p-5">
+                <div className="text-xs font-extrabold text-neutral-300">
                   Darurat / Lintas Instansi
                 </div>
-                <div className="text-2xl font-extrabold text-[#DC2626] mt-1.5 tabular-nums">3</div>
-                <div className="text-xs font-bold text-[#DC2626] mt-2">
+                <div className="text-2xl font-extrabold text-[#E11D2E] mt-1.5 tabular-nums">3</div>
+                <div className="text-xs font-bold text-neutral-300 mt-2">
                   Polsek / BPBD / Damkar
                 </div>
               </div>
             </div>
 
             {/* Real-Time Complaints Table Card */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 mx-8 mt-6">
+            <div className="bg-white border border-neutral-200 p-6 mx-8 mt-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-extrabold text-slate-900">
+                <h2 className="text-sm font-extrabold text-neutral-950">
                   Daftar Pengaduan Warga (Real-Time dari Web & Barcode Pos RT)
                 </h2>
                 {adminSidebarMenu === 'akun' && (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] text-slate-500 mr-1">Ganti Peran Aktif:</span>
+                    <span className="text-[11px] text-neutral-500 mr-1">Ganti Peran Aktif:</span>
                     {PRESET_OFFICER_ACCOUNTS.map((acc) => (
                       <button
                         key={acc.id}
@@ -2578,10 +3180,10 @@ export default function App() {
                           setOfficerSession(acc);
                           showToast(`Beralih peran ke ${acc.jabatan} (${acc.name})`);
                         }}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
+                        className={`px-2.5 py-1 text-[11px] font-bold cursor-pointer ${
                           officerSession.id === acc.id
-                            ? 'bg-[#1D4ED8] text-white'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            ? 'bg-[#E11D2E] text-white'
+                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
                         }`}
                       >
                         {acc.jabatan}
@@ -2594,20 +3196,20 @@ export default function App() {
               {/* Search & Filter Row */}
               <div className="flex flex-wrap items-center gap-3.5 mt-4 mb-5">
                 <div className="relative w-full sm:w-80">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={adminSearch}
                     onChange={(e) => setAdminSearch(e.target.value)}
                     placeholder="Cari NIK, Nama, atau Nomor RT..."
-                    className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#1D4ED8]"
+                    className="w-full bg-[#F7F7F7] border border-neutral-300 pl-9 pr-4 py-2.5 text-xs text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
                   />
                 </div>
 
                 <select
                   value={adminCategoryFilter}
                   onChange={(e) => setAdminCategoryFilter(e.target.value)}
-                  className="bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium text-slate-700 focus:outline-none"
+                  className="bg-[#F7F7F7] border border-neutral-300 px-4 py-2.5 text-xs font-medium text-neutral-800 focus:outline-none focus:border-[#E11D2E]"
                 >
                   <option value="semua">Semua Kategori Aduan</option>
                   <option value="musibah_darurat">Musibah / Darurat</option>
@@ -2619,7 +3221,7 @@ export default function App() {
                 <select
                   value={adminRtFilter}
                   onChange={(e) => setAdminRtFilter(e.target.value)}
-                  className="bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium text-slate-700 focus:outline-none"
+                  className="bg-[#F7F7F7] border border-neutral-300 px-4 py-2.5 text-xs font-medium text-neutral-800 focus:outline-none focus:border-[#E11D2E]"
                 >
                   <option value="semua">Filter Wilayah RT/RW</option>
                   <option value="003">RT 003 / RW 001</option>
@@ -2634,7 +3236,7 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-[#F8FAFC] border-y border-slate-200 text-[11px] font-extrabold text-slate-500 uppercase">
+                    <tr className="bg-[#EEEEEE] border-y border-neutral-300 text-[11px] font-extrabold text-neutral-700 uppercase">
                       <th className="py-3.5 px-4">ID & WAKTU</th>
                       <th className="py-3.5 px-4">PELAPOR & NIK</th>
                       <th className="py-3.5 px-4">KATEGORI & SIFAT</th>
@@ -2642,7 +3244,7 @@ export default function App() {
                       <th className="py-3.5 px-4">STATUS & TINDAKAN</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+                  <tbody className="divide-y divide-neutral-200 text-xs">
                     {filteredAdminRows.map((row) => {
                       const displayTicket = row.ticketNumber.replace('FTL-2026-', 'FTL-');
                       const timeLabel =
@@ -2657,28 +3259,28 @@ export default function App() {
                           : 'Hari Ini';
 
                       return (
-                        <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                        <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
                           <td className="py-4 px-4 align-middle whitespace-nowrap">
-                            <div className="font-extrabold text-slate-900">#{displayTicket}</div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">{timeLabel}</div>
+                            <div className="font-extrabold text-neutral-950">#{displayTicket}</div>
+                            <div className="text-[11px] text-neutral-500 mt-0.5">{timeLabel}</div>
                           </td>
 
                           <td className="py-4 px-4 align-middle whitespace-nowrap">
                             {row.isConfidential || row.category === 'khusus_rahasia' ? (
                               <>
-                                <div className="font-bold text-[#92400E]">
+                                <div className="font-bold text-[#E11D2E]">
                                   [Identitas Dirahasiakan]
                                 </div>
-                                <div className="text-[11px] font-semibold text-[#16A34A] mt-0.5">
+                                <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
                                   NIK Terverifikasi Sistem
                                 </div>
                               </>
                             ) : (
                               <>
-                                <div className="font-extrabold text-slate-900">
+                                <div className="font-extrabold text-neutral-900">
                                   {row.reporterName}
                                 </div>
-                                <div className="text-[11px] font-semibold text-[#16A34A] mt-0.5">
+                                <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
                                   NIK Warga Valid
                                 </div>
                               </>
@@ -2687,34 +3289,34 @@ export default function App() {
 
                           <td className="py-4 px-4 align-middle whitespace-nowrap">
                             {row.category === 'musibah_darurat' && (
-                              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#FEF2F2] text-[#DC2626] font-extrabold text-[11px]">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#E11D2E] text-white font-extrabold text-[11px]">
                                 Musibah / Darurat
                               </span>
                             )}
                             {row.category === 'khusus_rahasia' && (
-                              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#FEF3C7] text-[#92400E] font-extrabold text-[11px]">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#262629] text-white font-extrabold text-[11px]">
                                 Khusus / Sensitif
                               </span>
                             )}
                             {row.category === 'subsidi_minyak_tanah' && (
-                              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E] font-extrabold text-[11px]">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-neutral-200 text-neutral-900 font-extrabold text-[11px]">
                                 Subsidi Minyak
                               </span>
                             )}
                             {row.category === 'umum_lingkungan' && (
-                              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#DBEAFE] text-[#1E40AF] font-extrabold text-[11px]">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#EEEEEE] border border-neutral-300 text-neutral-900 font-extrabold text-[11px]">
                                 Umum / Batas Tanah
                               </span>
                             )}
                           </td>
 
                           <td className="py-4 px-4 align-middle">
-                            <div className="font-extrabold text-slate-900">
+                            <div className="font-extrabold text-neutral-900">
                               {displayTicket === 'FTL-042'
                                 ? 'Polusi Bau Kandang Ternak Babi'
                                 : row.title}
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
+                            <div className="text-[11px] text-neutral-500 mt-0.5">
                               {displayTicket === 'FTL-045'
                                 ? 'Pos RT 003 / RW 001 • Ada Bukti Foto'
                                 : displayTicket === 'FTL-042'
@@ -2732,7 +3334,7 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 rounded-xl bg-[#DC2626] hover:bg-red-700 text-white font-extrabold text-xs text-center transition-colors cursor-pointer"
+                                className="w-56 py-2.5 px-4 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs text-center transition-colors cursor-pointer"
                               >
                                 Teruskan ke BPBD / Damkar
                               </button>
@@ -2740,7 +3342,7 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 rounded-xl bg-[#F8FAFC] hover:bg-blue-50 border border-[#93C5FD] text-[#1E40AF] font-extrabold text-xs text-center transition-colors cursor-pointer"
+                                className="w-56 py-2.5 px-4 bg-white hover:bg-neutral-100 border border-neutral-400 text-neutral-900 font-extrabold text-xs text-center transition-colors cursor-pointer"
                               >
                                 Update Status / Mediasi
                               </button>
@@ -2748,7 +3350,7 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 rounded-xl bg-[#F8FAFC] hover:bg-blue-50 border border-[#93C5FD] text-[#1E40AF] font-extrabold text-xs text-center transition-colors cursor-pointer"
+                                className="w-56 py-2.5 px-4 bg-white hover:bg-neutral-100 border border-neutral-400 text-neutral-900 font-extrabold text-xs text-center transition-colors cursor-pointer"
                               >
                                 Verifikasi Bersama RT {row.rtNumber}
                               </button>
@@ -2756,7 +3358,7 @@ export default function App() {
                               <button
                                 type="button"
                                 onClick={() => handleAdminRowAction(row)}
-                                className="w-56 py-2.5 px-4 rounded-xl bg-[#F59E0B] hover:bg-amber-600 text-slate-950 font-extrabold text-xs text-center transition-colors cursor-pointer"
+                                className="w-56 py-2.5 px-4 bg-[#262629] hover:bg-neutral-800 text-white font-extrabold text-xs text-center transition-colors cursor-pointer"
                               >
                                 Cetak Pengantar Polsek
                               </button>
@@ -2773,25 +3375,25 @@ export default function App() {
             {/* Bottom 2-Column Action Cards Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mx-8 my-6">
               {/* Bottom Left: Pembuatan Surat Pengantar Lintas Instansi */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between">
+              <div className="bg-white border border-neutral-200 p-6 flex flex-col justify-between">
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                    <Printer className="w-4 h-4 text-[#1D4ED8]" />
+                  <h3 className="text-sm font-extrabold text-neutral-950 flex items-center gap-2">
+                    <Printer className="w-4 h-4 text-[#E11D2E]" />
                     <span>Pembuatan Surat Pengantar Lintas Instansi</span>
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-neutral-500 mt-1">
                     Fasilitasi otomatis surat resmi kelurahan untuk penanganan lanjutan:
                   </p>
 
                   <div className="mt-5 space-y-4">
                     <div>
-                      <label className="block text-xs font-extrabold text-slate-800 mb-2">
+                      <label className="block text-xs font-extrabold text-neutral-900 mb-2">
                         Pilih ID Tiket Pengaduan
                       </label>
                       <select
                         value={selectedLetterTicketId}
                         onChange={(e) => setSelectedLetterTicketId(Number(e.target.value))}
-                        className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#1D4ED8]"
+                        className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-medium text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
                       >
                         {complaints.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -2803,13 +3405,13 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-extrabold text-slate-800 mb-2">
+                      <label className="block text-xs font-extrabold text-neutral-900 mb-2">
                         Instansi Tujuan Tindak Lanjut
                       </label>
                       <select
                         value={selectedLetterAgency}
                         onChange={(e) => setSelectedLetterAgency(e.target.value)}
-                        className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#1D4ED8]"
+                        className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-medium text-neutral-900 focus:outline-none focus:border-[#E11D2E]"
                       >
                         {AGENCY_LIST.map((ag) => (
                           <option key={ag} value={ag}>
@@ -2840,32 +3442,32 @@ export default function App() {
                       );
                     }
                   }}
-                  className="mt-6 w-full bg-[#1D4ED8] hover:bg-blue-800 text-white font-extrabold text-xs py-3.5 rounded-xl transition-colors cursor-pointer"
+                  className="mt-6 w-full bg-[#262629] hover:bg-neutral-800 text-white font-extrabold text-xs py-3.5 transition-colors cursor-pointer"
                 >
                   Generate & Unduh Surat Resmi (PDF)
                 </button>
               </div>
 
               {/* Bottom Right: Manajemen Arsip Digital & Ekspor PDF Berkala */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between">
+              <div className="bg-white border border-neutral-200 p-6 flex flex-col justify-between">
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-[#16A34A]" />
+                  <h3 className="text-sm font-extrabold text-neutral-950 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#E11D2E]" />
                     <span>Manajemen Arsip Digital & Ekspor PDF Berkala</span>
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-neutral-500 mt-1">
                     Pengganti buku pengaduan fisik untuk permintaan data dari Dinas/Pemkot Kupang.
                   </p>
 
                   <div className="mt-5">
-                    <label className="block text-xs font-extrabold text-slate-800 mb-2">
+                    <label className="block text-xs font-extrabold text-neutral-900 mb-2">
                       Periode Rekapitulasi Laporan
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <select
                         value={archivePeriod}
                         onChange={(e) => setArchivePeriod(e.target.value)}
-                        className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:outline-none"
+                        className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-medium text-neutral-900 focus:outline-none"
                       >
                         <option value="Oktober 2026 (Bulanan)">Oktober 2026 (Bulanan)</option>
                         <option value="Triwulan IV 2026">Triwulan IV 2026</option>
@@ -2875,7 +3477,7 @@ export default function App() {
                       <select
                         value={archiveCategory}
                         onChange={(e) => setArchiveCategory(e.target.value)}
-                        className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:outline-none"
+                        className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-medium text-neutral-900 focus:outline-none"
                       >
                         <option value="Semua Kategori & RT">Semua Kategori & RT</option>
                         <option value="Khusus Subsidi Minyak Tanah">
@@ -2886,9 +3488,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="mt-4 bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl p-3.5 text-xs text-[#065F46]">
+                  <div className="mt-4 bg-[#F7F7F7] border-l-4 border-[#0B0B0C] p-3.5 text-xs text-neutral-800">
                     <div className="font-extrabold">Sinkronisasi Buku Arsip Fisik Kelurahan:</div>
-                    <div className="mt-0.5 text-[11px] text-[#047857]">
+                    <div className="mt-0.5 text-[11px] text-neutral-600">
                       Data historis perpindahan warga lama tetap terpisah di buku manual kantor.
                     </div>
                   </div>
@@ -2904,7 +3506,7 @@ export default function App() {
                     );
                     showToast('Buku Arsip Digital (.PDF) berhasil diunduh.');
                   }}
-                  className="mt-6 w-full bg-[#16A34A] hover:bg-emerald-700 text-white font-extrabold text-xs py-3.5 rounded-xl transition-colors cursor-pointer"
+                  className="mt-6 w-full bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs py-3.5 transition-colors cursor-pointer"
                 >
                   Ekspor Buku Arsip Digital (.PDF)
                 </button>
@@ -2916,22 +3518,22 @@ export default function App() {
 
       {/* Modal for Updating Status / Mediasi */}
       {editingItem && officerSession && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 max-w-lg w-full p-7 shadow-xl">
-            <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-white border border-neutral-300 border-t-4 border-t-[#E11D2E] max-w-lg w-full p-7 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 mb-5 border-b border-neutral-200">
               <div>
-                <span className="text-xs font-extrabold text-[#1D4ED8]">
+                <span className="text-xs font-extrabold text-[#E11D2E]">
                   #{editingItem.ticketNumber} • RT {editingItem.rtNumber} / RW{' '}
                   {editingItem.rwNumber}
                 </span>
-                <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
+                <h3 className="text-base font-extrabold text-neutral-950 mt-0.5">
                   Tindak Lanjut & Verifikasi ({officerSession.jabatan})
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingItem(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
+                className="p-1.5 text-neutral-400 hover:text-neutral-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2939,13 +3541,13 @@ export default function App() {
 
             <form onSubmit={handleSaveModalStatus} className="space-y-4">
               <div>
-                <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                   Tahapan Status Tindak Lanjut
                 </label>
                 <select
                   value={modalStatus}
                   onChange={(e) => setModalStatus(e.target.value)}
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
+                  className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-bold text-neutral-900"
                 >
                   <option value="menunggu_verifikasi">
                     1. Laporan Diterima via Barcode Pos RT
@@ -2964,13 +3566,13 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                   Instansi Tujuan / Koordinasi
                 </label>
                 <select
                   value={modalAgency}
                   onChange={(e) => setModalAgency(e.target.value)}
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800"
+                  className="w-full bg-[#F7F7F7] border border-neutral-300 px-4 py-3 text-xs font-medium text-neutral-900"
                 >
                   {AGENCY_LIST.map((ag) => (
                     <option key={ag} value={ag}>
@@ -2981,7 +3583,7 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-slate-800 mb-1.5">
+                <label className="block text-xs font-extrabold text-neutral-900 mb-1.5">
                   Catatan Mediasi / Peninjauan Lapangan
                 </label>
                 <textarea
@@ -2990,7 +3592,7 @@ export default function App() {
                   onChange={(e) => setModalNotes(e.target.value)}
                   placeholder="Tuliskan hasil koordinasi bersama Ketua RT/RW atau instansi..."
                   required
-                  className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl p-3.5 text-xs text-slate-900"
+                  className="w-full bg-[#F7F7F7] border border-neutral-300 p-3.5 text-xs text-neutral-900"
                 />
               </div>
 
@@ -2998,14 +3600,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setEditingItem(null)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                  className="px-4 py-2.5 bg-neutral-200 text-neutral-800 font-bold text-xs cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={savingModal}
-                  className="px-6 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-800 text-white font-extrabold text-xs cursor-pointer"
+                  className="px-6 py-2.5 bg-[#E11D2E] hover:bg-red-700 text-white font-extrabold text-xs cursor-pointer"
                 >
                   {savingModal ? 'Menyimpan...' : 'Simpan & Perbarui Status'}
                 </button>

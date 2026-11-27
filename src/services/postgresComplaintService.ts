@@ -1,5 +1,5 @@
 import { db } from '../db/index.ts';
-import { complaints, complaintLogs } from '../db/schema.ts';
+import { users, complaints, complaintLogs } from '../db/schema.ts';
 import { eq, desc, asc } from 'drizzle-orm';
 import {
   ComplaintItem,
@@ -79,8 +79,7 @@ function mapComplaintRowToItem(
 }
 
 /**
- * Fetches complaints and their timeline logs from the PostgreSQL database,
- * returning records aligned with the ComplaintItem interface.
+ * Fetches complaints and their timeline logs directly from Cloud SQL PostgreSQL.
  */
 export async function fetchComplaintsFromPostgres(query?: string): Promise<ComplaintItem[]> {
   try {
@@ -126,8 +125,7 @@ export async function fetchComplaintsFromPostgres(query?: string): Promise<Compl
 }
 
 /**
- * Saves a new citizen or subsidy complaint into the PostgreSQL database
- * along with its initial audit log, returning a complete ComplaintItem.
+ * Saves a new citizen or subsidy complaint into Cloud SQL PostgreSQL.
  */
 export async function saveComplaintToPostgres(
   input: CreateComplaintPayload
@@ -193,8 +191,7 @@ export async function saveComplaintToPostgres(
 
 /**
  * Updates the status, disposition agency, official referral letter number,
- * and mediation notes of a complaint in PostgreSQL and appends a log entry,
- * returning the updated ComplaintItem.
+ * and mediation notes of a complaint in Cloud SQL PostgreSQL.
  */
 export async function updateComplaintStatusInPostgres(
   complaintId: number,
@@ -262,5 +259,100 @@ export async function updateComplaintStatusInPostgres(
     throw new Error('Gagal memperbarui status pengaduan di database PostgreSQL.', {
       cause: error,
     });
+  }
+}
+
+/**
+ * Registers a new officer account into the PostgreSQL users table via Drizzle ORM.
+ */
+export async function registerOfficerInPostgres(input: {
+  username: string;
+  nipOrCode: string;
+  password: string;
+  name: string;
+  jabatan: string;
+  role: string;
+  rtScope: string;
+}) {
+  try {
+    const uidKey = `acct-${input.username.toLowerCase()}`;
+    const existingUsers = await db.select().from(users);
+    const alreadyExists = existingUsers.some(
+      (u) =>
+        u.uid.toLowerCase() === uidKey ||
+        u.email.toLowerCase() === input.username.toLowerCase() ||
+        (u.rwNumber || '').toLowerCase() === input.nipOrCode.toLowerCase()
+    );
+
+    if (alreadyExists) {
+      throw new Error('Username atau NIP tersebut sudah terdaftar. Silakan langsung masuk (Login).');
+    }
+
+    const inserted = await db
+      .insert(users)
+      .values({
+        uid: uidKey,
+        email: input.username.toLowerCase(),
+        fullName: input.name,
+        role: input.role,
+        jabatan: input.jabatan,
+        rtNumber: input.rtScope,
+        rwNumber: input.nipOrCode,
+        phone: input.password,
+      })
+      .returning();
+
+    const row = inserted[0];
+    return {
+      id: row.uid,
+      username: row.email,
+      securityToken: 'FTL-SEC-CUSTOM-2026',
+      name: row.fullName,
+      jabatan: row.jabatan,
+      role: row.role,
+      nipOrCode: row.rwNumber || row.email,
+      rtScope: row.rtNumber || undefined,
+    };
+  } catch (error: any) {
+    console.error('PostgreSQL Service Error in registerOfficerInPostgres:', error);
+    throw new Error(error.message || 'Gagal mendaftarkan akun petugas di PostgreSQL.', {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Authenticates a registered officer account from the PostgreSQL users table via Drizzle ORM.
+ */
+export async function loginOfficerFromPostgres(usernameOrNip: string, password: string) {
+  try {
+    const cleanInput = usernameOrNip.trim().toLowerCase();
+    const allUsers = await db.select().from(users);
+
+    const matched = allUsers.find(
+      (u) =>
+        (u.email.toLowerCase() === cleanInput ||
+          u.uid.toLowerCase() === `acct-${cleanInput}` ||
+          (u.rwNumber || '').toLowerCase() === cleanInput) &&
+        u.phone === password
+    );
+
+    if (!matched) {
+      return null;
+    }
+
+    return {
+      id: matched.uid,
+      username: matched.email,
+      securityToken: 'FTL-SEC-CUSTOM-2026',
+      name: matched.fullName,
+      jabatan: matched.jabatan,
+      role: matched.role,
+      nipOrCode: matched.rwNumber || matched.email,
+      rtScope: matched.rtNumber || undefined,
+    };
+  } catch (error) {
+    console.error('PostgreSQL Service Error in loginOfficerFromPostgres:', error);
+    throw new Error('Gagal memverifikasi akun petugas di database PostgreSQL.', { cause: error });
   }
 }

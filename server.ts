@@ -4,7 +4,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
-import { createPool } from './src/db/index.ts';
 import {
   getOrCreateUser,
   updateUserProfile,
@@ -14,29 +13,14 @@ import {
   fetchComplaintsFromPostgres,
   saveComplaintToPostgres,
   updateComplaintStatusInPostgres,
+  registerOfficerInPostgres,
+  loginOfficerFromPostgres,
 } from './src/services/postgresComplaintService.ts';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-async function ensureOfficerAccountsTable() {
-  const pool = createPool();
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS officer_accounts (
-      id SERIAL PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE,
-      nip_or_code TEXT NOT NULL,
-      password TEXT NOT NULL,
-      full_name TEXT NOT NULL,
-      jabatan TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'staf_admin',
-      rt_scope TEXT DEFAULT '',
-      created_at TIMESTAMP DEFAULT NOW() NOT NULL
-    );
-  `);
-}
 
 async function startServer() {
   const app = express();
@@ -83,7 +67,7 @@ async function startServer() {
 
   const OFFICE_REGISTRATION_CODE = 'FATULULI-2026';
 
-  // 0b. Officer Account Registration (Protected by Office Registration Code)
+  // 0b. Officer Account Registration (Backed by Cloud SQL PostgreSQL via Drizzle)
   app.post('/api/auth/register', async (req, res) => {
     try {
       const {
@@ -115,19 +99,6 @@ async function startServer() {
         });
       }
 
-      await ensureOfficerAccountsTable();
-      const pool = createPool();
-
-      const existing = await pool.query(
-        'SELECT id FROM officer_accounts WHERE LOWER(username) = $1 OR LOWER(nip_or_code) = $2',
-        [cleanUser, cleanNip.toLowerCase()]
-      );
-      if (existing.rows.length > 0) {
-        return res.status(409).json({
-          error: 'Username atau NIP tersebut sudah terdaftar. Silakan langsung masuk (Login).',
-        });
-      }
-
       const validRole = ['lurah', 'kasi_trantib', 'staf_admin', 'ketua_rt'].includes(role)
         ? role
         : 'staf_admin';
@@ -140,76 +111,39 @@ async function startServer() {
           : validRole === 'ketua_rt'
           ? `Ketua RT ${String(rtScope || '001').padStart(3, '0')}`
           : 'Staf Administrasi Kelurahan');
+      const rtVal = validRole === 'ketua_rt' ? String(rtScope || '012').padStart(3, '0') : '';
 
-      const inserted = await pool.query(
-        `INSERT INTO officer_accounts (username, nip_or_code, password, full_name, jabatan, role, rt_scope)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING *`,
-        [
-          cleanUser,
-          cleanNip,
-          cleanPass,
-          cleanName,
-          defaultJabatan,
-          validRole,
-          validRole === 'ketua_rt' ? String(rtScope || '012').padStart(3, '0') : '',
-        ]
-      );
-
-      const row = inserted.rows[0];
-      return res.status(201).json({
-        account: {
-          id: `custom-${row.id}`,
-          username: row.username,
-          securityToken: 'FTL-SEC-CUSTOM-2026',
-          name: row.full_name,
-          jabatan: row.jabatan,
-          role: row.role,
-          nipOrCode: row.nip_or_code,
-          rtScope: row.rt_scope || undefined,
-        },
+      const account = await registerOfficerInPostgres({
+        username: cleanUser,
+        nipOrCode: cleanNip,
+        password: cleanPass,
+        name: cleanName,
+        jabatan: defaultJabatan,
+        role: validRole,
+        rtScope: rtVal,
       });
+
+      return res.status(201).json({ account });
     } catch (error: any) {
       console.error('Error in POST /api/auth/register:', error);
-      return res.status(500).json({ error: error.message || 'Gagal mendaftarkan akun petugas.' });
+      return res.status(400).json({ error: error.message || 'Gagal mendaftarkan akun petugas.' });
     }
   });
 
-  // 0c. Officer Account Login (Checks PostgreSQL officer_accounts table)
+  // 0c. Officer Account Login (Backed by Cloud SQL PostgreSQL via Drizzle)
   app.post('/api/auth/login', async (req, res) => {
     try {
       const { usernameOrNip, password } = req.body || {};
-      const cleanInput = String(usernameOrNip || '').trim().toLowerCase();
+      const cleanInput = String(usernameOrNip || '').trim();
       const cleanPass = String(password || '').trim();
 
       if (!cleanInput || !cleanPass) {
         return res.status(400).json({ error: 'Username/NIP dan Kata Sandi wajib diisi.' });
       }
 
-      await ensureOfficerAccountsTable();
-      const pool = createPool();
-
-      const found = await pool.query(
-        `SELECT * FROM officer_accounts
-         WHERE (LOWER(username) = $1 OR LOWER(nip_or_code) = $1) AND password = $2
-         LIMIT 1`,
-        [cleanInput, cleanPass]
-      );
-
-      if (found.rows.length > 0) {
-        const row = found.rows[0];
-        return res.status(200).json({
-          account: {
-            id: `custom-${row.id}`,
-            username: row.username,
-            securityToken: 'FTL-SEC-CUSTOM-2026',
-            name: row.full_name,
-            jabatan: row.jabatan,
-            role: row.role,
-            nipOrCode: row.nip_or_code,
-            rtScope: row.rt_scope || undefined,
-          },
-        });
+      const account = await loginOfficerFromPostgres(cleanInput, cleanPass);
+      if (account) {
+        return res.status(200).json({ account });
       }
 
       return res.status(401).json({
