@@ -1040,12 +1040,9 @@ export default function App() {
           {/* =================================================================
               2. DARK HERO SECTION (Latar Gelap #0B0B0C, Judul Merah, Kotak Aksi Kanan & Kartu Horizontal Bawah)
              ================================================================= */}
-          <section className="relative bg-[#0B0B0C] text-white overflow-hidden border-b border-neutral-800">
-            {/* Subtle dark architectural overlay */}
-            <div className="
-              absolute inset-0 opacity-20 pointer-events-none
-              bg-[radial-gradient(circle_at_20%_20%,#262629_0%,transparent_55%),radial-gradient(circle_at_80%_70%,#3f1116_0%,transparent_50%)]
-            " />
+          <section className="relative bg-[#0B0B0C] bg-[url('/assets/aistudio/e2242443-c928-4f03-8ccf-bab2090bd40c_ff52c204.jpg')] bg-cover bg-center bg-no-repeat text-white overflow-hidden border-b border-neutral-800">
+            {/* Semi-transparent black overlay so the Kelurahan Fatululi photo is clearly visible */}
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0B0B0C]/80 via-[#0B0B0C]/65 to-[#0B0B0C]/70 pointer-events-none" />
 
             <div className="relative max-w-7xl mx-auto px-6 pt-10 pb-14">
               {/* Top Breadcrumb Navigation */}
